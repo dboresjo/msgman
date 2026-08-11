@@ -1,0 +1,175 @@
+# msgman
+
+A command line tool for managing Scala messages files.
+
+`msgman` sorts every messages file entry into a canonical order:
+
+1. Dots separate segments of each key.
+2. Keys are sorted alphabetically at each level of the hierarchy.
+3. Entries sharing the same top-level key form a block, and blocks are separated
+   by a single blank line.
+
+For example, given the keys `site.change`, `site.back`, `date.year`, `date.day`
+and `phase`, the canonical order is:
+
+```
+date.day = ...
+date.year = ...
+
+phase = ...
+
+site.back = ...
+site.change = ...
+```
+
+## Comments
+
+A `#` comment is treated as attaching to the following key, and is retained
+when the file is re-sorted — with one distinction:
+
+* A single-hashed (`#`) comment sitting at the start of a block (i.e. directly
+  before the first of a run of entries sharing a top-level key) attaches to
+  the **block** as a whole. It is written once, above the block, wherever that
+  block ends up after sorting — not tied to whichever specific entry happens
+  to sort first.
+* Any other comment — one that isn't at the start of a block, or one that is
+  double-hashed (`##`) — attaches to the **individual entry** immediately
+  following it, and travels with that entry when the file is re-sorted. When
+  the file is rewritten, these are always written double-hashed, so a later
+  `format` or `verify` run recognises them as line comments again even if they
+  were originally written with a single hash.
+* A comment with no following key at all (e.g. a trailing note at the end of
+  the file) is preserved verbatim at the bottom of the file.
+
+For example:
+
+```
+# Change of business name
+changeBusinessName.heading = ...
+changeBusinessName.title = ...
+## only relevant to the confirmation page
+changeBusinessName.confirmation.title = ...
+```
+
+`# Change of business name` is a block comment for `changeBusinessName`;
+`## only relevant to the confirmation page` is a line comment tied to
+`changeBusinessName.confirmation.title` alone.
+
+## Install
+
+Requires a JDK, [sbt](https://www.scala-sbt.org/) and the
+[Scala Native toolchain](https://scala-native.org/en/stable/user/setup.html)
+(a C compiler and LLVM).
+
+```
+./install
+```
+
+This does a clean build (`sbt clean nativeLink`) and then installs the
+resulting binary:
+
+* system-wide, to `/usr/local/bin`, if the machine has passwordless `sudo`
+  available
+* otherwise locally, to `~/.local/bin`, for the current user only (the script
+  warns if that directory isn't already on your `PATH`)
+
+If a required tool (`sbt`, or the C compiler/LLVM the Scala Native toolchain
+needs) is missing, the script stops with an explanatory error rather than a
+raw build failure.
+
+To build without installing, or to install by hand:
+
+```
+sbt nativeLink
+cp target/scala-2.13/msgman /usr/local/bin/msgman
+```
+
+## Usage
+
+```
+msgman <format|verify> [options]
+```
+
+### Commands
+
+* **format** — rewrites every messages file in place into canonical order, if
+  it isn't already.
+  * Translations missing from a non-master language file (present in the
+    master, absent from that file) are listed to stdout.
+  * Translations for keys that don't exist in the master language are removed
+    from the file and listed to stdout.
+  * A key that appears more than once in a single file is merged into one
+    entry if every occurrence has the same value; if any two occurrences
+    disagree, that's a fatal error (reported to stderr) and no files are
+    changed.
+* **verify** — makes no changes to any file.
+  * Exits with a fatal error if any file is not already in canonical order
+    (listed to stderr), or if any translation is missing (listed to stderr).
+  * Translations for keys that don't exist in the master language are listed
+    to stdout, but do not affect the exit code.
+  * A key that appears more than once in a single file is always a fatal
+    error, listed to stdout — even if every occurrence has the same value.
+
+### Options
+
+| Option | Description | Default |
+|---|---|---|
+| `--master <code>` | Country code of the master language, an ISO 2-letter code | `en` |
+| `--file-pattern <pattern>` | Filename pattern for messages files. `$1` is replaced by the language code | `messages.$1` |
+| `--path <dir>` | Directory to look for messages files in, relative to the current directory | `conf` |
+| `--fix` | *(format only)* Add missing translations to the relevant file, with the value prefixed by that file's target language code, e.g. `cy: ` | off |
+| `--strict` | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) as missing, rather than translated | off |
+| `--require <codes>` | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing | none |
+| `--help` | Show usage instructions | |
+
+`msgman` discovers language files by matching every filename directly inside
+`--path` against `--file-pattern`; the text captured in place of `$1` is that
+file's language code. With the defaults, a project with `conf/messages.en` and
+`conf/messages.cy` is treated as having master language `en` and translation
+`cy`.
+
+### Examples
+
+Check that every messages file in `conf/` is canonical and fully translated,
+and that Welsh and French translations specifically exist (suitable for CI):
+
+```
+msgman verify --require cy,fr
+```
+
+Reformat every messages file in place, add language-code-prefixed placeholders
+(e.g. `cy: `) for any translation that's missing, and drop any translation
+left over for a key the master no longer has:
+
+```
+msgman format --fix
+```
+
+Use a different directory and filename convention:
+
+```
+msgman verify --path app/messages --file-pattern messages_$1.properties
+```
+
+## Exit codes
+
+* `0` — success.
+* `1` — a messages file is malformed, the master (or a `--require`d) language
+  file could not be found, a file has a duplicate key with conflicting values
+  (`format`) or any duplicate key at all (`verify`), or (for `verify`) a file
+  is not canonical or a translation is missing.
+* `2` — invalid command line arguments.
+
+## Development
+
+Built with [Scala Native](https://scala-native.org/). Tests are written with
+[munit](https://scalameta.org/munit/) and run as a native binary via
+`sbt test`. The project targets 100% statement and branch coverage, measured
+with [sbt-scoverage](https://github.com/scoverage/sbt-scoverage):
+
+```
+sbt clean test coverageReport
+```
+
+The HTML coverage report is written to
+`target/scala-2.13/scoverage-report/index.html`.

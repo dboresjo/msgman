@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Builds msgman from a clean state and installs it: system-wide (/usr/local/bin)
+# if the machine running this script has passwordless sudo available, otherwise
+# locally to ~/.local/bin for the current user.
+set -euo pipefail
+
+BINARY_NAME="msgman"
+SYSTEM_DIR="/usr/local/bin"
+LOCAL_DIR="${HOME}/.local/bin"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+die() {
+  echo "install: error: $1" >&2
+  exit 1
+}
+
+command -v sbt >/dev/null 2>&1 \
+  || die "sbt is required to build ${BINARY_NAME} but was not found on PATH. Install it: https://www.scala-sbt.org/download.html"
+command -v install >/dev/null 2>&1 \
+  || die "the 'install' command is required but was not found on PATH."
+
+echo "Building ${BINARY_NAME} (sbt clean nativeLink)..."
+if ! sbt -no-colors "clean; nativeLink"; then
+  die "build failed (see sbt output above). If this looks like a Scala Native toolchain problem, check that a C compiler and LLVM are installed: https://scala-native.org/en/stable/user/setup.html"
+fi
+
+BUILT_BINARIES=()
+while IFS= read -r -d '' f; do
+  BUILT_BINARIES+=("$f")
+done < <(find target -mindepth 2 -maxdepth 2 -type f -name "${BINARY_NAME}" -print0 2>/dev/null)
+
+if [ "${#BUILT_BINARIES[@]}" -eq 0 ]; then
+  die "build succeeded, but no '${BINARY_NAME}' binary was found under target/. This is unexpected; please report it."
+fi
+if [ "${#BUILT_BINARIES[@]}" -gt 1 ]; then
+  echo "install: warning: multiple built binaries found under target/, using the most recently modified" >&2
+fi
+BUILT_BINARY="$(ls -t "${BUILT_BINARIES[@]}" | head -n1)"
+
+if sudo -n true 2>/dev/null; then
+  echo "Passwordless sudo is available: installing system-wide to ${SYSTEM_DIR}"
+  sudo install -m 755 "${BUILT_BINARY}" "${SYSTEM_DIR}/${BINARY_NAME}"
+  echo "Installed ${SYSTEM_DIR}/${BINARY_NAME}"
+else
+  echo "Passwordless sudo is not available: installing locally to ${LOCAL_DIR}"
+  mkdir -p "${LOCAL_DIR}"
+  install -m 755 "${BUILT_BINARY}" "${LOCAL_DIR}/${BINARY_NAME}"
+  echo "Installed ${LOCAL_DIR}/${BINARY_NAME}"
+  case ":${PATH}:" in
+    *":${LOCAL_DIR}:"*) ;;
+    *)
+      echo
+      echo "note: ${LOCAL_DIR} is not on your PATH. Add it in your shell profile, e.g.:"
+      echo "  export PATH=\"${LOCAL_DIR}:\$PATH\""
+      ;;
+  esac
+fi
