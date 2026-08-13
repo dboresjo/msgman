@@ -22,13 +22,13 @@ final case class MessagesFile(blockComments: Map[String, List[String]], entries:
 
 final case class MessagesFileParseException(message: String) extends RuntimeException(message)
 
-object MessagesFile {
+object MessagesFile:
 
   def apply(entries: List[Entry]): MessagesFile = MessagesFile(Map.empty[String, List[String]], entries, Nil)
 
   private final case class PendingComment(text: String, doubleHashed: Boolean)
 
-  def parse(content: String): MessagesFile = {
+  def parse(content: String): MessagesFile =
     val lines = content.linesIterator.toList
 
     val entries = Vector.newBuilder[Entry]
@@ -37,77 +37,67 @@ object MessagesFile {
     var pending = Vector.empty[PendingComment]
     var previousTop: Option[String] = None
 
-    lines.foreach { rawLine =>
+    lines.foreach: rawLine =>
       val trimmed = rawLine.trim
-      if (trimmed.isEmpty) {
+      if trimmed.isEmpty then
         // blank lines are pure formatting; they don't break comment attachment
-      } else if (trimmed.startsWith("#")) {
+        ()
+      else if trimmed.startsWith("#") then
         val doubleHashed = trimmed.startsWith("##")
         val text = trimmed.replaceFirst("^#+\\s*", "")
         pending = pending :+ PendingComment(text, doubleHashed)
-      } else {
+      else
         val idx = trimmed.indexOf('=')
-        if (idx < 0) {
+        if idx < 0 then
           throw MessagesFileParseException(s"malformed line (expected 'key = value'): $trimmed")
-        }
         val key = trimmed.substring(0, idx).trim
         val value = trimmed.substring(idx + 1).trim
-        if (key.isEmpty) {
+        if key.isEmpty then
           throw MessagesFileParseException(s"malformed line (empty key): $trimmed")
-        }
 
         val top = Key.topLevel(key)
         val isBlockStart = previousTop.forall(_ != top)
         previousTop = Some(top)
 
-        if (pending.isEmpty) {
+        if pending.isEmpty then
           entries += Entry(key, value)
-        } else if (isBlockStart && !pending.head.doubleHashed && !claimedBlocks.contains(top)) {
+        else if isBlockStart && !pending.head.doubleHashed && !claimedBlocks.contains(top) then
           blockComments(top) = pending.map(_.text).toList
           claimedBlocks += top
           entries += Entry(key, value)
-        } else {
+        else
           entries += Entry(key, value, pending.map(_.text).toList)
-        }
         pending = Vector.empty
-      }
-    }
 
-    val trailer = pending.map(c => if (c.doubleHashed) s"## ${c.text}" else s"# ${c.text}").toList
+    val trailer = pending.map(c => if c.doubleHashed then s"## ${c.text}" else s"# ${c.text}").toList
 
     MessagesFile(blockComments.toMap, entries.result().toList, trailer)
-  }
 
-  def render(file: MessagesFile): String = {
+  def render(file: MessagesFile): String =
     val sorted = file.entries.sortBy(_.key)(Key.ordering)
     val sb = new StringBuilder
 
     var previousTop: Option[String] = None
-    sorted.foreach { entry =>
+    sorted.foreach: entry =>
       val top = Key.topLevel(entry.key)
       val isNewBlock = previousTop.forall(_ != top)
-      if (previousTop.isDefined && isNewBlock) sb.append('\n')
-      if (isNewBlock) {
+      if previousTop.isDefined && isNewBlock then sb.append('\n')
+      if isNewBlock then
         file.blockComments.getOrElse(top, Nil).foreach(line => sb.append("# ").append(line).append('\n'))
-      }
       entry.comments.foreach(line => sb.append("## ").append(line).append('\n'))
       sb.append(entry.key).append(" = ").append(entry.value).append('\n')
       previousTop = Some(top)
-    }
 
-    if (file.trailer.nonEmpty) {
-      if (sorted.nonEmpty) sb.append('\n')
+    if file.trailer.nonEmpty then
+      if sorted.nonEmpty then sb.append('\n')
       file.trailer.foreach(line => sb.append(line).append('\n'))
-    }
 
     sb.toString
-  }
 
   /** A key that appears more than once in a single file. */
-  final case class DuplicateGroup(key: String, entries: List[Entry]) {
+  final case class DuplicateGroup(key: String, entries: List[Entry]):
     def values: List[String] = entries.map(_.value)
     def isConflicting: Boolean = values.distinct.size > 1
-  }
 
   /** Every key that appears more than once in `file`, ordered by canonical key order. */
   def duplicates(file: MessagesFile): List[DuplicateGroup] =
@@ -121,11 +111,8 @@ object MessagesFile {
     * occurrence) down to their first occurrence. Entries with conflicting
     * values are left untouched; callers should reject those separately.
     */
-  def dedupe(file: MessagesFile): MessagesFile = {
+  def dedupe(file: MessagesFile): MessagesFile =
     val firstOccurrence = scala.collection.mutable.LinkedHashMap.empty[String, Entry]
-    file.entries.foreach { entry =>
-      if (!firstOccurrence.contains(entry.key)) firstOccurrence(entry.key) = entry
-    }
+    file.entries.foreach: entry =>
+      if !firstOccurrence.contains(entry.key) then firstOccurrence(entry.key) = entry
     file.copy(entries = firstOccurrence.values.toList)
-  }
-}

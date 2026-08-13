@@ -81,7 +81,7 @@ To build without installing, or to install by hand:
 
 ```
 sbt nativeLink
-cp target/scala-2.13/msgman /usr/local/bin/msgman
+cp target/scala-3.3.7/msgman /usr/local/bin/msgman
 ```
 
 ## Usage
@@ -177,11 +177,18 @@ msgman verify --path app/messages --file-pattern messages_$1.properties
 Built with [Scala Native](https://scala-native.org/). Tests are written with
 [munit](https://scalameta.org/munit/) and run as a native binary via
 `sbt test`. The project targets 100% statement and branch coverage, measured
-with [sbt-scoverage](https://github.com/scoverage/sbt-scoverage):
+with [sbt-scoverage](https://github.com/scoverage/sbt-scoverage), using the
+`coverage` command to enable instrumentation for that run only (a plain
+`sbt test` or `sbt nativeLink` is never instrumented, and does not need
+OpenSSL):
 
 ```
-sbt clean test coverageReport
+sbt clean coverage test coverageReport
 ```
+
+Coverage instrumentation needs OpenSSL's `libcrypto` available at build and
+link time (development headers/libs, e.g. the `libssl-dev` package on
+Debian/Ubuntu), to satisfy `java.security.SecureRandom` on Scala Native.
 
 The HTML coverage report is written to
-`target/scala-2.13/scoverage-report/index.html`.
+`target/scala-3.3.7/scoverage-report/index.html`.

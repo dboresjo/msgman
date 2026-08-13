@@ -1,10 +1,7 @@
 package msgman
 
-sealed trait Command
-object Command {
-  case object Format extends Command
-  case object Verify extends Command
-}
+enum Command:
+  case Format, Verify
 
 final case class Config(
     command: Command,
@@ -16,15 +13,13 @@ final case class Config(
     require: List[String] = Nil
 )
 
-sealed trait ParseResult
-object ParseResult {
-  final case class Success(config: Config) extends ParseResult
-  case object Help extends ParseResult
-  case object Revision extends ParseResult
-  final case class Failure(message: String) extends ParseResult
-}
+enum ParseResult:
+  case Success(config: Config)
+  case Help
+  case Revision
+  case Failure(message: String)
 
-object Cli {
+object Cli:
 
   val usage: String =
     """msgman - manage the canonical order of Scala messages files
@@ -50,17 +45,12 @@ object Cli {
 
   private def isIsoCode(code: String): Boolean = isoCode.pattern.matcher(code).matches()
 
-  def parse(args: Array[String]): ParseResult = {
-    if (args.contains("--help") || args.contains("-h")) {
-      ParseResult.Help
-    } else if (args.contains("--revision")) {
-      ParseResult.Revision
-    } else {
-      parseArgs(args)
-    }
-  }
+  def parse(args: Array[String]): ParseResult =
+    if args.contains("--help") || args.contains("-h") then ParseResult.Help
+    else if args.contains("--revision") then ParseResult.Revision
+    else parseArgs(args)
 
-  private def parseArgs(args: Array[String]): ParseResult = {
+  private def parseArgs(args: Array[String]): ParseResult =
     val positional = scala.collection.mutable.ListBuffer.empty[String]
     var master = "en"
     var filePattern = "messages.$1"
@@ -71,47 +61,41 @@ object Cli {
     var error: Option[String] = None
 
     var i = 0
-    while (i < args.length && error.isEmpty) {
-      args(i) match {
+    while i < args.length && error.isEmpty do
+      args(i) match
         case "--master" =>
-          takeValue(args, i, "--master") match {
+          takeValue(args, i, "--master") match
             case Left(e)          => error = Some(e)
             case Right((v, next)) => master = v; i = next
-          }
         case "--file-pattern" =>
-          takeValue(args, i, "--file-pattern") match {
+          takeValue(args, i, "--file-pattern") match
             case Left(e)          => error = Some(e)
             case Right((v, next)) => filePattern = v; i = next
-          }
         case "--path" =>
-          takeValue(args, i, "--path") match {
+          takeValue(args, i, "--path") match
             case Left(e)          => error = Some(e)
             case Right((v, next)) => path = v; i = next
-          }
         case "--require" =>
-          takeValue(args, i, "--require") match {
+          takeValue(args, i, "--require") match
             case Left(e) => error = Some(e)
             case Right((v, next)) =>
               val codes = v.split(",").map(_.trim).filter(_.nonEmpty).toList
-              if (codes.isEmpty) error = Some("--require requires at least one country code")
-              else { require = codes; i = next }
-          }
-        case "--fix"    => fix = true
-        case "--strict" => strict = true
-        case s if s.startsWith("--") => error = Some(s"unknown option: $s")
-        case other => positional += other
-      }
+              if codes.isEmpty then error = Some("--require requires at least one country code")
+              else
+                require = codes
+                i = next
+        case "--fix"                  => fix = true
+        case "--strict"               => strict = true
+        case s if s.startsWith("--")  => error = Some(s"unknown option: $s")
+        case other                    => positional += other
       i += 1
-    }
 
-    error match {
+    error match
       case Some(e) => ParseResult.Failure(e)
       case None    => finish(positional.toList, master, filePattern, path, fix, strict, require)
-    }
-  }
 
   private def takeValue(args: Array[String], i: Int, flag: String): Either[String, (String, Int)] =
-    if (i + 1 >= args.length) Left(s"missing value for $flag") else Right((args(i + 1), i + 1))
+    if i + 1 >= args.length then Left(s"missing value for $flag") else Right((args(i + 1), i + 1))
 
   private def finish(
       positional: List[String],
@@ -121,24 +105,19 @@ object Cli {
       fix: Boolean,
       strict: Boolean,
       require: List[String]
-  ): ParseResult = {
-    if (!isIsoCode(master)) {
+  ): ParseResult =
+    if !isIsoCode(master) then
       ParseResult.Failure(s"--master must be a 2-letter ISO country code: $master")
-    } else if (!require.forall(isIsoCode)) {
+    else if !require.forall(isIsoCode) then
       ParseResult.Failure(s"--require codes must be 2-letter ISO country codes: ${require.filterNot(isIsoCode).mkString(", ")}")
-    } else {
-      positional match {
+    else
+      positional match
         case command :: Nil =>
-          command match {
+          command match
             case "format" if strict => ParseResult.Failure("--strict is only valid with the verify command")
             case "verify" if fix    => ParseResult.Failure("--fix is only valid with the format command")
-            case "format" => ParseResult.Success(Config(Command.Format, master, filePattern, path, fix, strict, require))
-            case "verify" => ParseResult.Success(Config(Command.Verify, master, filePattern, path, fix, strict, require))
-            case other    => ParseResult.Failure(s"unknown command: $other")
-          }
+            case "format"           => ParseResult.Success(Config(Command.Format, master, filePattern, path, fix, strict, require))
+            case "verify"           => ParseResult.Success(Config(Command.Verify, master, filePattern, path, fix, strict, require))
+            case other              => ParseResult.Failure(s"unknown command: $other")
         case Nil => ParseResult.Failure("expected a command: format or verify")
         case _   => ParseResult.Failure("expected exactly one command: format or verify")
-      }
-    }
-  }
-}

@@ -7,7 +7,7 @@ lazy val root = (project in file("."))
   .settings(
     name := "msgman",
     version := "0.1.0",
-    scalaVersion := "2.13.16",
+    scalaVersion := "3.3.7",
     Compile / mainClass := Some("msgman.Main"),
     nativeConfig ~= { c =>
       c.withMode(Mode.debug)
@@ -41,10 +41,20 @@ lazy val root = (project in file("."))
       Seq(file)
     }.taskValue,
     libraryDependencies += "org.scalameta" %%% "munit" % "1.3.5" % Test,
+    // Only needed to satisfy java.security.SecureRandom when coverage instrumentation
+    // is active (the `coverage` command), see coverageExcludedFiles below. Its native
+    // sources get linked into any binary that merely has it on the classpath, so it is
+    // added conditionally rather than as a plain Test dependency: a plain `sbt test`
+    // must not need libcrypto at all, only `sbt coverage test` does.
+    libraryDependencies ++= {
+      if (coverageEnabled.value) Seq("com.github.lolgab" %%% "scala-native-crypto" % "0.4.0" % Test)
+      else Seq.empty
+    },
     testFrameworks += new TestFramework("munit.Framework"),
-    coverageEnabled := true,
-    coverageExcludedFiles := ".*BuildInfo.*",
-    libraryDependencies += "org.scoverage" %%% "scalac-scoverage-runtime" % coverageScalacPluginVersion.value,
+    // The `$COVERAGE-OFF$` comment marker only works on Scala 2, so Main (which just
+    // wires Runner to the real process and cannot be covered without calling sys.exit
+    // from a test) is excluded here instead. File exclusion needs Scala 3.3.4+.
+    coverageExcludedFiles := ".*BuildInfo.*;.*Main",
     scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
