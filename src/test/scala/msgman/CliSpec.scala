@@ -122,4 +122,13 @@ class CliSpec extends munit.FunSuite {
     assert(Cli.usage.contains("verify"))
     assert(Cli.usage.contains("--require"))
   }
+
+  test("parse --revision short-circuits everything else") {
+    assertEquals(Cli.parse(Array("--revision")), ParseResult.Revision)
+    assertEquals(Cli.parse(Array("format", "--bogus", "--revision")), ParseResult.Revision)
+  }
+
+  test("parse --help takes priority over --revision") {
+    assertEquals(Cli.parse(Array("--help", "--revision")), ParseResult.Help)
+  }
 }

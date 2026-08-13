@@ -27,12 +27,14 @@ class RunnerSpec extends munit.FunSuite {
 
   private case class Result(exitCode: Int, out: String, err: String)
 
+  private val testRevision = "https://github.com/dboresjo/msgman/tree/testsha\n"
+
   private def runIn(cwd: File, args: String*): Result = {
     val outBytes = new ByteArrayOutputStream()
     val errBytes = new ByteArrayOutputStream()
     val out = new PrintStream(outBytes, true, "UTF-8")
     val err = new PrintStream(errBytes, true, "UTF-8")
-    val code = Runner.run(args.toArray, cwd, out, err)
+    val code = Runner.run(args.toArray, cwd, out, err, testRevision)
     Result(code, outBytes.toString("UTF-8"), errBytes.toString("UTF-8"))
   }
 
@@ -41,6 +43,14 @@ class RunnerSpec extends munit.FunSuite {
     val result = runIn(cwd, "--help")
     assertEquals(result.exitCode, ExitCode.Success)
     assert(result.out.contains("Usage: msgman"))
+  }
+
+  test("--revision prints the supplied revision string and exits successfully") {
+    val cwd = tempCwd()
+    val result = runIn(cwd, "--revision")
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(result.out, testRevision)
+    assertEquals(result.err, "")
   }
 
   test("a usage error exits with the usage error code and prints usage to stderr") {

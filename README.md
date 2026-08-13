@@ -1,6 +1,6 @@
 # msgman
 
-A command line tool for managing Scala messages files.
+A command line tool for managing Scala Play Framework messages files for multiple languages.
 
 `msgman` sorts every messages file entry into a canonical order:
 
@@ -121,6 +121,18 @@ msgman <format|verify> [options]
 | `--strict` | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) as missing, rather than translated | off |
 | `--require <codes>` | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing | none |
 | `--help` | Show usage instructions | |
+| `--revision` | Show the GitHub URL of the revision this binary was built from | |
+
+`--revision` prints a link to the repository as it stood at the exact commit
+the running binary was compiled from, e.g.
+`https://github.com/dboresjo/msgman/tree/<sha>`. The commit and the `origin`
+remote URL are both read from the git checkout at build time, so a binary
+built from a fork links back to that fork rather than a hardcoded upstream
+repository. If the working tree had uncommitted changes at build time, the
+output is suffixed with `(dirty: built with uncommitted changes)`; if no
+`origin` remote could be read at build time (e.g. a tarball checkout, or a CI
+job with no remote configured), it falls back to printing the bare commit SHA
+with a note that the repository URL is unknown.
 
 `msgman` discovers language files by matching every filename directly inside
 `--path` against `--file-pattern`; the text captured in place of `$1` is that

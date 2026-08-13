@@ -20,6 +20,7 @@ sealed trait ParseResult
 object ParseResult {
   final case class Success(config: Config) extends ParseResult
   case object Help extends ParseResult
+  case object Revision extends ParseResult
   final case class Failure(message: String) extends ParseResult
 }
 
@@ -42,6 +43,7 @@ object Cli {
       |  --strict               verify only: treat language-code-prefixed placeholder values as missing
       |  --require <codes>      Require a messages file to exist for each comma-separated ISO 2-letter code
       |  --help                 Show this help message
+      |  --revision             Show the GitHub URL of the revision this binary was built from
       |""".stripMargin
 
   private val isoCode = "^[A-Za-z]{2}$".r
@@ -51,6 +53,8 @@ object Cli {
   def parse(args: Array[String]): ParseResult = {
     if (args.contains("--help") || args.contains("-h")) {
       ParseResult.Help
+    } else if (args.contains("--revision")) {
+      ParseResult.Revision
     } else {
       parseArgs(args)
     }

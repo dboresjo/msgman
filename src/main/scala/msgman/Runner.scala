@@ -15,10 +15,13 @@ object ExitCode {
   */
 object Runner {
 
-  def run(args: Array[String], cwd: File, out: PrintStream, err: PrintStream): Int =
+  def run(args: Array[String], cwd: File, out: PrintStream, err: PrintStream, revision: String): Int =
     Cli.parse(args) match {
       case ParseResult.Help =>
         out.print(Cli.usage)
+        ExitCode.Success
+      case ParseResult.Revision =>
+        out.print(revision)
         ExitCode.Success
       case ParseResult.Failure(message) =>
         err.println(s"msgman: $message")
