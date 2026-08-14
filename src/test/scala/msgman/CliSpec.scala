@@ -85,6 +85,42 @@ class CliSpec extends munit.FunSuite:
       ParseResult.Failure("--require codes must be 2-letter ISO country codes: xyz")
     )
 
+  test("parse --translate with format"):
+    assertEquals(Cli.parse(Array("format", "--translate")), ParseResult.Success(Config(Command.Format, translate = true)))
+
+  test("parse --translate with verify fails"):
+    assertEquals(Cli.parse(Array("verify", "--translate")), ParseResult.Failure("--translate is only valid with the format command"))
+
+  test("parse --translate together with --fix fails"):
+    assertEquals(
+      Cli.parse(Array("format", "--fix", "--translate")),
+      ParseResult.Failure("--translate cannot be used together with --fix")
+    )
+
+  test("parse --model with --translate"):
+    assertEquals(
+      Cli.parse(Array("format", "--translate", "--model", "claude-sonnet-5")),
+      ParseResult.Success(Config(Command.Format, translate = true, model = Some("claude-sonnet-5")))
+    )
+
+  test("parse --model without --translate fails"):
+    assertEquals(
+      Cli.parse(Array("format", "--model", "claude-sonnet-5")),
+      ParseResult.Failure("--model is only valid with --translate")
+    )
+
+  test("parse --model without a value fails"):
+    assertEquals(Cli.parse(Array("format", "--translate", "--model")), ParseResult.Failure("missing value for --model"))
+
+  test("parse --verbose with --translate"):
+    assertEquals(
+      Cli.parse(Array("format", "--translate", "--verbose")),
+      ParseResult.Success(Config(Command.Format, translate = true, verbose = true))
+    )
+
+  test("parse --verbose without --translate fails"):
+    assertEquals(Cli.parse(Array("format", "--verbose")), ParseResult.Failure("--verbose is only valid with --translate"))
+
   test("parse an unknown option fails"):
     assertEquals(Cli.parse(Array("format", "--bogus")), ParseResult.Failure("unknown option: --bogus"))
 
@@ -97,6 +133,9 @@ class CliSpec extends munit.FunSuite:
     assert(Cli.usage.contains("format"))
     assert(Cli.usage.contains("verify"))
     assert(Cli.usage.contains("--require"))
+    assert(Cli.usage.contains("--translate"))
+    assert(Cli.usage.contains("--model"))
+    assert(Cli.usage.contains("--verbose"))
 
   test("parse --revision short-circuits everything else"):
     assertEquals(Cli.parse(Array("--revision")), ParseResult.Revision)

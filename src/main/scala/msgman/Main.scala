@@ -1,5 +1,7 @@
 package msgman
 
+import java.io.File
+
 object Main:
 
   // Excluded from coverage via coverageExcludedFiles in build.sbt: this just wires
@@ -8,5 +10,15 @@ object Main:
   def main(args: Array[String]): Unit =
     val repoUrl = BuildInfo.remoteUrl.flatMap(VersionInfo.parseRemoteUrl)
     val revision = VersionInfo.render(BuildInfo.commitSha, BuildInfo.dirty, repoUrl)
-    val exitCode = Runner.run(args, new java.io.File("."), System.out, System.err, revision)
+    val cwd = new File(".")
+    val aiConfig = AiConfig.load(cwd)
+    val providers: Map[String, Translator] = BuildInfo.aiProviders.map: provider =>
+      val apiKey = AiConfig.resolveApiKey(provider, aiConfig, sys.env.get)
+      val translator = provider match
+        case "openai" => OpenAiFactory.instance(apiKey)
+        case "claude" => ClaudeFactory.instance(apiKey)
+        case "gemini" => GeminiFactory.instance(apiKey)
+      provider -> translator
+    .toMap
+    val exitCode = Runner.run(args, cwd, System.out, System.err, revision, providers, env = sys.env.get)
     sys.exit(exitCode)

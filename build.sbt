@@ -65,6 +65,17 @@ lazy val root = (project in file("."))
     // one provider. An empty aiProviders means msgman needs nothing beyond libc
     // to run, same as today; see TRANSLATION.md.
     libraryDependencies ++= aiProviders.map(p => "com.softwaremill.sttp.ai" %%% p % sttpAiVersion),
+    // Each provider has a real (needs that provider's sttp-ai module) and a stub
+    // (no dependency, always fails) source directory defining the same factory
+    // object, eg. ClaudeFactory. Only one of the two is compiled in per provider,
+    // chosen by whether it's in aiProviders, so Main.scala can reference all three
+    // factories unconditionally regardless of which providers were linked in.
+    Compile / unmanagedSourceDirectories ++= {
+      val base = baseDirectory.value / "src" / "main"
+      validAiProviders.toList.sorted.map { p =>
+        if (aiProviders.contains(p)) base / s"scala-ai-$p" else base / s"scala-ai-$p-stub"
+      }
+    },
     // Only needed to satisfy java.security.SecureRandom when coverage instrumentation
     // is active (the `coverage` command), see coverageExcludedFiles below. Its native
     // sources get linked into any binary that merely has it on the classpath, so it is
@@ -77,8 +88,12 @@ lazy val root = (project in file("."))
     testFrameworks += new TestFramework("munit.Framework"),
     // The `$COVERAGE-OFF$` comment marker only works on Scala 2, so Main (which just
     // wires Runner to the real process and cannot be covered without calling sys.exit
-    // from a test) is excluded here instead. File exclusion needs Scala 3.3.4+.
-    coverageExcludedFiles := ".*BuildInfo.*;.*Main",
+    // from a test) is excluded here instead. File exclusion needs Scala 3.3.4+. The
+    // per-provider *Factory objects wrap a live AI provider client and cannot be
+    // exercised without a live network call either, see "Test coverage" in
+    // TRANSLATION.md; the prompt-building and response-parsing logic they call into
+    // (AiProtocol) is provider-agnostic and not excluded, it is covered normally.
+    coverageExcludedFiles := ".*BuildInfo.*;.*Main;.*OpenAiFactory;.*ClaudeFactory;.*GeminiFactory",
     scalacOptions ++= Seq(
       "-deprecation",
       "-feature",

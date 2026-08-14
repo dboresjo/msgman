@@ -7,6 +7,7 @@ object ExitCode:
   val Success = 0
   val Fatal = 1
   val UsageError = 2
+  val TranslationFailure = 3
 
 /** Ties the CLI parsing, file discovery, parsing and rendering together. Kept
   * separate from Main so it can be exercised in tests without going through
@@ -14,7 +15,17 @@ object ExitCode:
   */
 object Runner:
 
-  def run(args: Array[String], cwd: File, out: PrintStream, err: PrintStream, revision: String): Int =
+  def run(
+      args: Array[String],
+      cwd: File,
+      out: PrintStream,
+      err: PrintStream,
+      revision: String,
+      providers: Map[String, Translator] = Map.empty,
+      home: File = new File(System.getProperty("user.home")),
+      etc: File = new File("/etc"),
+      env: String => Option[String]
+  ): Int =
     Cli.parse(args) match
       case ParseResult.Help =>
         out.print(Cli.usage)
@@ -27,9 +38,18 @@ object Runner:
         err.print(Cli.usage)
         ExitCode.UsageError
       case ParseResult.Success(config) =>
-        runCommand(config, cwd, out, err)
+        runCommand(config, cwd, out, err, providers, home, etc, env)
 
-  private def runCommand(config: Config, cwd: File, out: PrintStream, err: PrintStream): Int =
+  private def runCommand(
+      config: Config,
+      cwd: File,
+      out: PrintStream,
+      err: PrintStream,
+      providers: Map[String, Translator],
+      home: File,
+      etc: File,
+      env: String => Option[String]
+  ): Int =
     val dir = new File(cwd, config.path)
     val discovered =
       try Right(FileDiscovery.discover(dir, config.filePattern))
@@ -57,7 +77,7 @@ object Runner:
             ExitCode.Fatal
           case Right(analyses) =>
             config.command match
-              case Command.Format => runFormat(config, analyses, out, err)
+              case Command.Format => runFormat(config, analyses, cwd, out, err, providers, home, etc, env)
               case Command.Verify => runVerify(config, analyses, out, err)
 
   private final case class FileAnalysis(code: String, file: File, raw: String, parsed: MessagesFile):
@@ -72,7 +92,62 @@ object Runner:
     val errors = results.collect { case Left(e) => e }
     if errors.nonEmpty then Left(errors) else Right(results.collect { case Right(a) => a })
 
-  private def runFormat(config: Config, analyses: List[FileAnalysis], out: PrintStream, err: PrintStream): Int =
+  /** Resolves what `--translate` needs before any AI call is made: the
+    * configured provider must be linked into this build, an API key must be
+    * available for it, and a model must be known (either from `--model` or
+    * the configuration file). All of this is checked once, up front, rather
+    * than discovered by exhausting the block/per-key retry loop with the same
+    * unrecoverable failure: none of these are the kind of thing that could
+    * succeed on a retry. `Right(None)` means `--translate` was not requested
+    * at all.
+    */
+  private def resolveTranslation(
+      config: Config,
+      cwd: File,
+      providers: Map[String, Translator],
+      home: File,
+      etc: File,
+      env: String => Option[String]
+  ): Either[String, Option[(AiConfig, Translator, String)]] =
+    if !config.translate then Right(None)
+    else if providers.isEmpty then
+      Left("this binary was built without --translate support; rebuild with --with-ai <provider> to link one in")
+    else
+      val aiConfig = AiConfig.load(cwd, home, etc)
+      // With exactly one provider linked in, that's the only sensible choice, so
+      // .msgman doesn't need to say which one to use. With more than one linked
+      // in, the choice is ambiguous and .msgman must select one explicitly.
+      val selectedProvider: Either[String, String] = aiConfig.provider match
+        case Some(p)                     => Right(p)
+        case None if providers.size == 1 => Right(providers.keys.head)
+        case None =>
+          val linked = providers.keys.toList.sorted.mkString(", ")
+          Left(s"--translate requires a provider to be selected, set 'provider' in .msgman (linked: $linked)")
+      selectedProvider.flatMap: provider =>
+        providers.get(provider) match
+          case None =>
+            val linked = providers.keys.toList.sorted.mkString(", ")
+            Left(s"AI provider '$provider' is configured but not linked into this build (linked: $linked)")
+          case Some(translator) =>
+            AiConfig.resolveApiKey(provider, aiConfig, env) match
+              case None =>
+                Left(s"no API key configured for provider '$provider'; set ${AiConfig.apiKeyEnvVar(provider)} or $provider.fallback-key in .msgman")
+              case Some(_) =>
+                config.model.orElse(aiConfig.model.get(provider)) match
+                  case None        => Left(s"no AI model configured for provider '$provider'; set $provider.model in .msgman or pass --model")
+                  case Some(model) => Right(Some((aiConfig, translator, model)))
+
+  private def runFormat(
+      config: Config,
+      analyses: List[FileAnalysis],
+      cwd: File,
+      out: PrintStream,
+      err: PrintStream,
+      providers: Map[String, Translator],
+      home: File,
+      etc: File,
+      env: String => Option[String]
+  ): Int =
     val conflicts = analyses.sortBy(_.code).flatMap: a =>
       MessagesFile.duplicates(a.parsed).filter(_.isConflicting).map(a.code -> _)
     if conflicts.nonEmpty then
@@ -81,11 +156,62 @@ object Runner:
           err.println(s"msgman: $code: duplicate key '${group.key}' has conflicting values: ${group.values.mkString(", ")}")
       return ExitCode.Fatal
 
-    val deduped = analyses.map(a => a.copy(parsed = MessagesFile.dedupe(a.parsed)))
+    resolveTranslation(config, cwd, providers, home, etc, env) match
+      case Left(message) =>
+        err.println(s"msgman: $message")
+        ExitCode.Fatal
+      case Right(translation) =>
+        val deduped = analyses.map(a => a.copy(parsed = MessagesFile.dedupe(a.parsed)))
 
-    val master = deduped.find(_.code == config.master).get
+        val master = deduped.find(_.code == config.master).get
+        val others = deduped.filterNot(_.code == config.master)
+
+        val log: String => Unit = if config.verbose then (msg: String) => out.println(s"msgman: $msg") else _ => ()
+
+        translateAll(cwd, translation, log, master, others, config.master) match
+          case Left(fatalReason) =>
+            err.println(s"msgman: $fatalReason")
+            ExitCode.Fatal
+          case Right(translationResults) =>
+            finishFormat(config, deduped, master, others, translationResults, out, err)
+
+  /** Runs `AiTranslate.translate` for every non-master file, in order,
+    * stopping at the first fatal failure (see `TranslateResult`) rather than
+    * attempting the rest with a translator/model/key combination already
+    * known not to work. `Right(Map.empty)` when `translation` is `None`,
+    * `--translate` was not requested.
+    */
+  private def translateAll(
+      cwd: File,
+      translation: Option[(AiConfig, Translator, String)],
+      log: String => Unit,
+      master: FileAnalysis,
+      others: List[FileAnalysis],
+      masterCode: String
+  ): Either[String, Map[String, (List[Entry], List[(String, String)])]] =
+    translation match
+      case None => Right(Map.empty)
+      case Some((aiConfig, translator, model)) =>
+        others.foldLeft(Right(Map.empty): Either[String, Map[String, (List[Entry], List[(String, String)])]]): (acc, analysis) =>
+          acc match
+            case Left(_) => acc
+            case Right(resultsSoFar) =>
+              val result =
+                AiTranslate.translate(cwd, aiConfig, translator, model, aiConfig.stealth, master.parsed, analysis.parsed, masterCode, analysis.code, log)
+              result.fatal match
+                case Some(reason) => Left(reason)
+                case None         => Right(resultsSoFar + (analysis.code -> (result.entries, result.stillMissing)))
+
+  private def finishFormat(
+      config: Config,
+      deduped: List[FileAnalysis],
+      master: FileAnalysis,
+      others: List[FileAnalysis],
+      translationResults: Map[String, (List[Entry], List[(String, String)])],
+      out: PrintStream,
+      err: PrintStream
+  ): Int =
     val masterValues = master.parsed.entries.map(e => e.key -> e.value).toMap
-    val others = deduped.filterNot(_.code == config.master)
     val othersParsed = others.map(a => a.code -> a.parsed).toMap
 
     val missing = Translations.findMissing(master.parsed, othersParsed, strict = false)
@@ -97,17 +223,22 @@ object Runner:
     val missingByCode = missing.groupBy(_.languageCode)
     val extraKeysByCode = extra.groupBy(_.languageCode).view.mapValues(_.map(_.key).toSet).toMap
 
+    translationResults.toList.sortBy(_._1).foreach:
+      case (code, (_, stillMissing)) =>
+        stillMissing.sortBy(_._1)(Key.ordering).foreach:
+          case (key, reason) => err.println(s"msgman: translation failed [$code] $key: $reason")
+
     deduped.foreach: analysis =>
       val extraKeys = extraKeysByCode.getOrElse(analysis.code, Set.empty[String])
       val keptEntries = analysis.parsed.entries.filterNot(e => extraKeys.contains(e.key))
       val newEntries =
         if config.fix then missingByCode.getOrElse(analysis.code, Nil).map(m => Entry(m.key, s"${analysis.code}: ${masterValues(m.key)}"))
-        else Nil
+        else translationResults.get(analysis.code).map(_._1).getOrElse(Nil)
       val updated = analysis.parsed.copy(entries = keptEntries ++ newEntries)
       val rendered = MessagesFile.render(updated)
       if rendered != analysis.raw then writeFile(analysis.file, rendered)
 
-    ExitCode.Success
+    if translationResults.values.exists(_._2.nonEmpty) then ExitCode.TranslationFailure else ExitCode.Success
 
   private def runVerify(config: Config, analyses: List[FileAnalysis], out: PrintStream, err: PrintStream): Int =
     val nonCanonical = analyses.filterNot(_.isCanonical).sortBy(_.code)

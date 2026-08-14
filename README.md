@@ -135,7 +135,10 @@ msgman <format|verify> [options]
 | `--file-pattern <pattern>` | Filename pattern for messages files. `$1` is replaced by the language code | `messages.$1` |
 | `--path <dir>` | Directory to look for messages files in, relative to the current directory | `conf` |
 | `--fix` | *(format only)* Add missing translations to the relevant file, with the value prefixed by that file's target language code, e.g. `cy: ` | off |
-| `--strict` | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) as missing, rather than translated | off |
+| `--translate` | *(format only)* Generate missing translations using an AI service and add them to the relevant file. Cannot be combined with `--fix`. See [TRANSLATION.md](TRANSLATION.md) | off |
+| `--model <id>` | Override the AI model configured for `--translate`'s selected provider. Only valid together with `--translate` | |
+| `--verbose` | Print each translation request to the AI service before it is sent, and its response (or failure reason) after. Only valid together with `--translate` | off |
+| `--strict` | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) or preceded by an "added by msgman" comment as missing, rather than translated | off |
 | `--require <codes>` | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing | none |
 | `--help` | Show usage instructions | |
 | `--revision` | Show the GitHub URL of the revision this binary was built from | |
@@ -172,6 +175,13 @@ left over for a key the master no longer has:
 
 ```
 msgman format --fix
+```
+
+Generate any missing translations using the AI provider configured in
+`.msgman` (requires a binary built with `--with-ai`, see [TRANSLATION.md](TRANSLATION.md)):
+
+```
+msgman format --translate
 ```
 
 Use a different directory and filename convention:

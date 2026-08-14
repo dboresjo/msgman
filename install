@@ -52,33 +52,27 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Checks whether a library is available at build time, via pkg-config where
-# possible and falling back to ldconfig's cache (pkg-config .pc files are not
-# always installed alongside the library itself).
-lib_available() {
-  local pkg_config_names=("$@")
-  local name
-  for name in "${pkg_config_names[@]}"; do
-    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists "$name" 2>/dev/null; then
-      return 0
-    fi
-  done
-  if command -v ldconfig >/dev/null 2>&1; then
-    for name in "${pkg_config_names[@]}"; do
-      ldconfig -p 2>/dev/null | grep -q "${name}\.so" && return 0
-    done
-  fi
-  return 1
+# Checks whether a C header is available at build time, by asking the C
+# compiler to find it, the same way Scala Native's own C compile step will
+# when nativeLink runs. Deliberately not based on pkg-config or ldconfig: a
+# machine can have a library's runtime .so installed (so both would report
+# it as "available") without the matching development/headers package, which
+# is what actually gates a successful build.
+header_available() {
+  local header="$1"
+  local cc="${CC:-cc}"
+  command -v "$cc" >/dev/null 2>&1 || return 1
+  echo "#include <${header}>" | "$cc" -E -x c - >/dev/null 2>&1
 }
 
 if [ "${#AI_PROVIDERS[@]}" -eq 0 ]; then
-  echo "No --with-ai provider given: building without --translate support"
+  echo "Building without --translate support (no AI provider specified)"
 else
   echo "Building with --translate support for: ${AI_PROVIDERS[*]}"
-  lib_available libcurl \
-    || die "--with-ai requires libcurl, which was not found. Install it, or omit --with-ai to build without --translate support."
-  lib_available libcrypto openssl \
-    || die "--with-ai requires libcrypto (OpenSSL), which was not found. Install it, or omit --with-ai to build without --translate support."
+  header_available "curl/curl.h" \
+    || die "--with-ai requires libcurl development headers (curl/curl.h), which were not found. Install them (e.g. the libcurl4-openssl-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
+  header_available "openssl/opensslv.h" \
+    || die "--with-ai requires OpenSSL development headers, which were not found. Install them (e.g. the libssl-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
 fi
 AI_PROVIDERS_PROP="$(IFS=,; echo "${AI_PROVIDERS[*]-}")"
 
