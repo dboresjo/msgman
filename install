@@ -2,11 +2,20 @@
 # Builds msgman from a clean state and installs it: system-wide (/usr/local/bin)
 # if the machine running this script has passwordless sudo available, otherwise
 # locally to ~/.local/bin for the current user.
+#
+# Usage: install [--with-ai <provider>]...
+#
+# --with-ai adds support for the --translate feature's AI provider, and may
+# be repeated to link in more than one (openai, claude, gemini). If omitted
+# entirely, no AI provider is linked in and --translate is unavailable in the
+# built binary. Any provider needs libcurl and libcrypto (OpenSSL) at build
+# and run time (see TRANSLATION.md); the script checks for them up front.
 set -euo pipefail
 
 BINARY_NAME="msgman"
 SYSTEM_DIR="/usr/local/bin"
 LOCAL_DIR="${HOME}/.local/bin"
+VALID_AI_PROVIDERS=("openai" "claude" "gemini")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -16,13 +25,70 @@ die() {
   exit 1
 }
 
+is_valid_ai_provider() {
+  local p="$1" v
+  for v in "${VALID_AI_PROVIDERS[@]}"; do
+    [ "$v" = "$p" ] && return 0
+  done
+  return 1
+}
+
+AI_PROVIDERS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-ai)
+      [ $# -ge 2 ] || die "--with-ai requires a provider argument: ${VALID_AI_PROVIDERS[*]}"
+      is_valid_ai_provider "$2" \
+        || die "--with-ai: unknown provider '$2' (expected one of: ${VALID_AI_PROVIDERS[*]})"
+      case " ${AI_PROVIDERS[*]-} " in
+        *" $2 "*) ;;
+        *) AI_PROVIDERS+=("$2") ;;
+      esac
+      shift 2
+      ;;
+    *)
+      die "unknown argument: '$1'"
+      ;;
+  esac
+done
+
+# Checks whether a library is available at build time, via pkg-config where
+# possible and falling back to ldconfig's cache (pkg-config .pc files are not
+# always installed alongside the library itself).
+lib_available() {
+  local pkg_config_names=("$@")
+  local name
+  for name in "${pkg_config_names[@]}"; do
+    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists "$name" 2>/dev/null; then
+      return 0
+    fi
+  done
+  if command -v ldconfig >/dev/null 2>&1; then
+    for name in "${pkg_config_names[@]}"; do
+      ldconfig -p 2>/dev/null | grep -q "${name}\.so" && return 0
+    done
+  fi
+  return 1
+}
+
+if [ "${#AI_PROVIDERS[@]}" -eq 0 ]; then
+  echo "No --with-ai provider given: building without --translate support"
+else
+  echo "Building with --translate support for: ${AI_PROVIDERS[*]}"
+  lib_available libcurl \
+    || die "--with-ai requires libcurl, which was not found. Install it, or omit --with-ai to build without --translate support."
+  lib_available libcrypto openssl \
+    || die "--with-ai requires libcrypto (OpenSSL), which was not found. Install it, or omit --with-ai to build without --translate support."
+fi
+AI_PROVIDERS_PROP="$(IFS=,; echo "${AI_PROVIDERS[*]-}")"
+
 command -v sbt >/dev/null 2>&1 \
   || die "sbt is required to build ${BINARY_NAME} but was not found on PATH. Install it: https://www.scala-sbt.org/download.html"
 command -v install >/dev/null 2>&1 \
   || die "the 'install' command is required but was not found on PATH."
 
 echo "Building ${BINARY_NAME} (sbt clean nativeLink)..."
-if ! sbt -no-colors "clean; nativeLink"; then
+if ! sbt -no-colors "-Dmsgman.aiProviders=${AI_PROVIDERS_PROP}" "clean; nativeLink"; then
   die "build failed (see sbt output above). If this looks like a Scala Native toolchain problem, check that a C compiler and LLVM are installed: https://scala-native.org/en/stable/user/setup.html"
 fi
 

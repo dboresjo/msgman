@@ -77,6 +77,23 @@ If a required tool (`sbt`, or the C compiler/LLVM the Scala Native toolchain
 needs) is missing, the script stops with an explanatory error rather than a
 raw build failure.
 
+### AI translation support (optional)
+
+`--translate` (documented in [TRANSLATION.md](TRANSLATION.md)) needs at least
+one AI provider linked into the binary. By default none is: pass
+`--with-ai <provider>` to the install script, repeated for each provider to
+link in (`openai`, `claude`, `gemini`):
+
+```
+./install --with-ai openai --with-ai claude
+```
+
+Any provider needs libcurl and libcrypto (OpenSSL) installed on the machine,
+at both build and run time (e.g. the `libcurl4-openssl-dev` and `libssl-dev`
+packages on Debian/Ubuntu). The script checks for both up front when
+`--with-ai` is given, and fails with a clear message before attempting a build
+if either is missing.
+
 To build without installing, or to install by hand:
 
 ```
@@ -171,6 +188,11 @@ msgman verify --path app/messages --file-pattern messages_$1.properties
   (`format`) or any duplicate key at all (`verify`), or (for `verify`) a file
   is not canonical or a translation is missing.
 * `2` — invalid command line arguments.
+* `3` — *(`format --translate` only)* one or more keys were left missing
+  because a translation was attempted and failed (network error, rate limit,
+  malformed response, or a placeholder-validation failure); distinct from a
+  key that is simply missing because no translation was attempted, which is
+  still exit `0`. See [TRANSLATION.md](TRANSLATION.md).
 
 ## Development
 

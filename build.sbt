@@ -2,6 +2,23 @@ import scala.scalanative.build._
 import scala.sys.process._
 import scala.util.Try
 
+// AI providers to link in, driven by the install script's --with-ai flag via
+// -Dmsgman.aiProviders=<comma-separated-list>. Empty (the default for a plain
+// `sbt nativeLink`) means no provider is linked in and --translate is
+// unavailable in the built binary. See TRANSLATION.md.
+val validAiProviders = Set("openai", "claude", "gemini")
+val aiProviders: Seq[String] = {
+  val providers = sys.props
+    .get("msgman.aiProviders")
+    .map(_.split(",").iterator.map(_.trim).filter(_.nonEmpty).toSeq)
+    .getOrElse(Seq.empty)
+  providers.find(!validAiProviders.contains(_)).foreach { p =>
+    sys.error(s"unknown msgman.aiProviders entry '$p' (expected one of: ${validAiProviders.mkString(", ")})")
+  }
+  providers
+}
+val sttpAiVersion = "0.8.0"
+
 lazy val root = (project in file("."))
   .enablePlugins(ScalaNativePlugin)
   .settings(
@@ -25,6 +42,8 @@ lazy val root = (project in file("."))
         case None      => "None"
       }
 
+      val aiProvidersLiteral = aiProviders.map(quote).mkString("List(", ", ", ")")
+
       val file = (Compile / sourceManaged).value / "msgman" / "BuildInfo.scala"
       IO.write(
         file,
@@ -35,12 +54,17 @@ lazy val root = (project in file("."))
            |  val commitSha: String = ${quote(commitSha)}
            |  val dirty: Boolean = $dirty
            |  val remoteUrl: Option[String] = $remoteUrlLiteral
+           |  val aiProviders: List[String] = $aiProvidersLiteral
            |}
            |""".stripMargin
       )
       Seq(file)
     }.taskValue,
     libraryDependencies += "org.scalameta" %%% "munit" % "1.3.5" % Test,
+    // Only pulled in when the install script's --with-ai flag requested at least
+    // one provider. An empty aiProviders means msgman needs nothing beyond libc
+    // to run, same as today; see TRANSLATION.md.
+    libraryDependencies ++= aiProviders.map(p => "com.softwaremill.sttp.ai" %%% p % sttpAiVersion),
     // Only needed to satisfy java.security.SecureRandom when coverage instrumentation
     // is active (the `coverage` command), see coverageExcludedFiles below. Its native
     // sources get linked into any binary that merely has it on the classpath, so it is
