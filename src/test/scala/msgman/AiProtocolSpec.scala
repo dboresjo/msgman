@@ -5,7 +5,7 @@ class AiProtocolSpec extends munit.FunSuite:
   private val context = BlockContext(
     projectName = Some("msgman"),
     projectDescription = Some("manages messages files"),
-    translationContext = Some("This is a UK tax service."),
+    translationContext = Some("This is a foo bar service."),
     topLevelKey = "site",
     siblingKeys = List(SiblingKey("site.back", "Back", Some("Yn ol")), SiblingKey("site.forward", "Forward", None)),
     masterLanguageCode = "en",
@@ -33,7 +33,7 @@ class AiProtocolSpec extends munit.FunSuite:
 
   test("buildPrompt includes the translation context when present"):
     val prompt = AiProtocol.buildPrompt(request)
-    assert(prompt.contains("This is a UK tax service."))
+    assert(prompt.contains("This is a foo bar service."))
 
   test("buildPrompt omits the context section when absent"):
     val prompt = AiProtocol.buildPrompt(request.copy(context = context.copy(translationContext = None)))

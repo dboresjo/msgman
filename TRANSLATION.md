@@ -4,7 +4,7 @@
 them to the relevant messages file. It is used together with *format*, and
 cannot be combined with `--fix`.
 
-See `AiConfig`, `AiTranslate`, `AiProtocol`, `Translator` and the per-provider
+See `Config`, `AiTranslate`, `AiProtocol`, `Translator` and the per-provider
 `*Factory` objects (`src/main/scala-ai-*`) for the implementation, and
 `install`/`build.sbt` for the `--with-ai` build-time wiring.
 
@@ -12,19 +12,12 @@ See `AiConfig`, `AiTranslate`, `AiProtocol`, `Translator` and the per-provider
 
 `--translate` is configured through a `.msgman` properties file, since the
 number of settings involved is too large for command-line switches alone.
-
-The file is searched for in the following order, and multiple files found
-are merged, with the most local taking priority:
-
-* `.msgman` in the current directory
-* `$HOME/.msgman`
-* `/etc/msgman`
-
-The format is flat `key = value` properties, with `#` for comments and
-dotted keys for per-provider settings (e.g. `openai.model = ...`), matching
-the same dot-hierarchy convention `msgman` already uses for message keys.
-The three file locations merge key by key, so this flat format is not a
-limitation for the merge.
+`.msgman` is not exclusive to `--translate`: `--master`, `--file-pattern`,
+`--path`, `--require` and `--priority-keys` are configurable through the same
+file too. See the "Configuration file (.msgman)" section in README.md for
+the file's search/merge order and format (`Config.loadSettings` and
+`Runner.resolve` implement it); the settings below are specific to
+`--translate`.
 
 ### Provider selection
 

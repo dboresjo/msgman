@@ -47,7 +47,7 @@ object TranslationContext:
     */
   def build(
       cwd: File,
-      config: AiConfig,
+      config: Config,
       master: MessagesFile,
       target: MessagesFile,
       topLevelKey: String,

@@ -11,9 +11,9 @@ object Main:
     val repoUrl = BuildInfo.remoteUrl.flatMap(VersionInfo.parseRemoteUrl)
     val revision = VersionInfo.render(BuildInfo.commitSha, BuildInfo.dirty, repoUrl, BuildInfo.aiProviders)
     val cwd = new File(".")
-    val aiConfig = AiConfig.load(cwd)
+    val aiConfig = Config.load(cwd)
     val providers: Map[String, Translator] = BuildInfo.aiProviders.map: provider =>
-      val apiKey = AiConfig.resolveApiKey(provider, aiConfig, sys.env.get)
+      val apiKey = Config.resolveApiKey(provider, aiConfig, sys.env.get)
       val translator = provider match
         case "openai" => OpenAiFactory.instance(apiKey)
         case "claude" => ClaudeFactory.instance(apiKey)

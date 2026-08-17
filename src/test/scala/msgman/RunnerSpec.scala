@@ -260,6 +260,47 @@ class RunnerSpec extends munit.FunSuite:
     assertEquals(read(file), content)
     assertEquals(file.lastModified(), before)
 
+  test("format --priority-keys sorts the named block(s) ahead of the rest, in the order given"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    val file = write(dir, "messages.en", "site.back = Back\ndate.day = Day\nphase = Phase\n")
+    val result = runIn(cwd, "format", "--priority-keys", "phase,site")
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(file), "phase = Phase\n\nsite.back = Back\n\ndate.day = Day\n")
+
+  test("verify --priority-keys treats a file arranged with the priority block first as canonical"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "phase = Phase\n\ndate.day = Day\n\nsite.back = Back\n")
+    val result = runIn(cwd, "verify", "--priority-keys", "phase")
+    assertEquals(result.exitCode, ExitCode.Success)
+
+  test("verify without --priority-keys treats a priority-first file as non-canonical"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "phase = Phase\n\ndate.day = Day\n\nsite.back = Back\n")
+    val result = runIn(cwd, "verify")
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("en is not in canonical format"))
+
+  test("format falls back to 'priority-keys' from .msgman when --priority-keys is not given"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    val file = write(dir, "messages.en", "site.back = Back\nphase = Phase\n")
+    write(cwd, ".msgman", "priority-keys = phase\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "format")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(file), "phase = Phase\n\nsite.back = Back\n")
+
+  test("--priority-keys on the command line overrides 'priority-keys' in .msgman"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    val file = write(dir, "messages.en", "site.back = Back\nphase = Phase\n")
+    write(cwd, ".msgman", "priority-keys = phase\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "format", "--priority-keys", "site")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(file), "site.back = Back\n\nphase = Phase\n")
+
   test("format reports missing translations to stdout but does not fail"):
     val cwd = tempCwd()
     val dir = confDir(cwd)
@@ -322,6 +363,42 @@ class RunnerSpec extends munit.FunSuite:
     write(dir, "messages.cy", "site.back = Yn ol\n")
     val result = runIn(cwd, "verify", "--master", "cy")
     assertEquals(result.exitCode, ExitCode.Success)
+
+  test("master, file-pattern, path and require fall back to .msgman when their switches are not given"):
+    val cwd = tempCwd()
+    val dir = new File(cwd, "translations")
+    dir.mkdirs()
+    write(dir, "msg_cy.txt", "site.back = Yn ol\n")
+    write(cwd, ".msgman", "master = cy\nfile-pattern = msg_$1.txt\npath = translations\nrequire = cy\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "verify")()
+    assertEquals(result.exitCode, ExitCode.Success)
+
+  test("--master, --file-pattern, --path and --require on the command line override .msgman"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "site.back = Yn ol\n")
+    write(cwd, ".msgman", "master = cy\nfile-pattern = msg_$1.txt\npath = translations\nrequire = fr\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "verify", "--master", "en", "--file-pattern", "messages.$1", "--path", "conf", "--require", "cy")()
+    assertEquals(result.exitCode, ExitCode.Success)
+
+  test("a 'master' from .msgman that is not a 2-letter ISO code is a fatal error"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(cwd, ".msgman", "master = eng\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "verify")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("master must be a 2-letter ISO country code: eng"))
+
+  test("a 'require' entry from .msgman that is not a 2-letter ISO code is a fatal error"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(cwd, ".msgman", "require = xyz\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "verify")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("require codes must be 2-letter ISO country codes: xyz"))
 
   test("--translate in a build with no AI provider linked in at all is a fatal error"):
     val cwd = tempCwd()

@@ -2,11 +2,14 @@ package msgman
 
 import java.io.File
 
-/** Settings for the --translate feature, read from the merged .msgman
+/** The `--translate` settings parsed out of the merged `.msgman`
   * configuration files. `model` and `fallbackKey` are keyed by provider name
-  * (eg. "openai"), since both are specified on a per-provider basis.
+  * (eg. "openai"), since both are specified on a per-provider basis. The
+  * `.msgman` file itself is not AI-specific (see `loadSettings`); other
+  * features read their own keys directly out of the raw settings map instead
+  * of being modelled here.
   */
-final case class AiConfig(
+final case class Config(
     provider: Option[String] = None,
     model: Map[String, String] = Map.empty,
     fallbackKey: Map[String, String] = Map.empty,
@@ -14,7 +17,7 @@ final case class AiConfig(
     translationContext: Option[String] = None
 )
 
-object AiConfig:
+object Config:
 
   private val blank = "^\\s*(#.*)?$".r
   private val keyValue = "^([^=\\s][^=]*?)\\s*=\\s*(.*)$".r
@@ -41,9 +44,9 @@ object AiConfig:
   def merge(files: List[Map[String, String]]): Map[String, String] =
     files.foldRight(Map.empty[String, String])((local, acc) => acc ++ local)
 
-  def fromSettings(settings: Map[String, String]): AiConfig =
+  def fromSettings(settings: Map[String, String]): Config =
     val perProvider = settings.toList.collect { case (perProviderKey(provider, field), value) => (provider, field, value) }
-    AiConfig(
+    Config(
       provider = settings.get("provider"),
       model = perProvider.collect { case (provider, "model", value) => provider -> value }.toMap,
       fallbackKey = perProvider.collect { case (provider, "fallback-key", value) => provider -> value }.toMap,
@@ -51,18 +54,23 @@ object AiConfig:
       translationContext = settings.get("translation-context")
     )
 
-  /** The three config file locations, most local first, matching the search
-    * order in TRANSLATION.md. A location that doesn't exist is skipped.
+  /** Reads and merges the three config file locations, most local first,
+    * matching the search order in TRANSLATION.md. A location that doesn't
+    * exist is skipped. Not AI-specific: this is the raw `.msgman` settings
+    * map, shared by any feature configurable through that file (e.g.
+    * `priority-keys`, read directly by `Runner`).
     */
-  def load(cwd: File, home: File, etc: File): AiConfig =
+  def loadSettings(cwd: File, home: File, etc: File): Map[String, String] =
     val locations = List(new File(cwd, ".msgman"), new File(home, ".msgman"), new File(etc, "msgman"))
     val parsed = locations.filter(_.isFile).map(f => parseFile(readFile(f)))
-    fromSettings(merge(parsed))
+    merge(parsed)
+
+  def load(cwd: File, home: File, etc: File): Config = fromSettings(loadSettings(cwd, home, etc))
 
   /** Convenience overload for production use: `$HOME` and `/etc` as reported
     * by the JVM/OS.
     */
-  def load(cwd: File): AiConfig =
+  def load(cwd: File): Config =
     load(cwd, new File(System.getProperty("user.home")), new File("/etc"))
 
   private def readFile(file: File): String =
@@ -82,5 +90,5 @@ object AiConfig:
   /** The API key to use for `provider`: its own environment variable if set,
     * otherwise the configured fallback key, otherwise none.
     */
-  def resolveApiKey(provider: String, config: AiConfig, env: String => Option[String]): Option[String] =
+  def resolveApiKey(provider: String, config: Config, env: String => Option[String]): Option[String] =
     env(apiKeyEnvVar(provider)).filter(_.nonEmpty).orElse(config.fallbackKey.get(provider))

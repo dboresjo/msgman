@@ -22,6 +22,20 @@ site.back = ...
 site.change = ...
 ```
 
+Top-level blocks can be pulled ahead of this alphabetical order with
+`--priority-keys` (or `priority-keys` in `.msgman`, see below). Given
+`--priority-keys phase,site` with the same keys:
+
+```
+phase = ...
+
+site.back = ...
+site.change = ...
+
+date.day = ...
+date.year = ...
+```
+
 ## Comments
 
 A `#` comment is treated as attaching to the following key, and is retained
@@ -129,19 +143,20 @@ msgman <format|verify> [options]
 
 ### Options
 
-| Option                     | Description                                                                                                                                              | Default       |
-|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `--master <code>`          | Country code of the master language, an ISO 2-letter code                                                                                                | `en`          |
-| `--file-pattern <pattern>` | Filename pattern for messages files. `$1` is replaced by the language code                                                                               | `messages.$1` |
-| `--path <dir>`             | Directory to look for messages files in, relative to the current directory                                                                               | `conf`        |
-| `--fix`                    | *(format only)* Add missing translations to the relevant file, with the value prefixed by that file's target language code, e.g. `cy: `                  | off           |
-| `--translate`              | *(format only)* Generate missing translations using an AI service and add them to the relevant file. Cannot be combined with `--fix`.                    | off           |
-| `--model <id>`             | Override the AI model configured for `--translate`'s selected provider. Only valid together with `--translate`                                           |               |
-| `--verbose`                | Print each translation request to the AI service before it is sent, and its response (or failure reason) after. Only valid together with `--translate`   | off           |
-| `--strict`                 | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) or preceded by an "added by msgman" comment as missing, rather than translated | off           |
-| `--require <codes>`        | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing             | none          |
-| `--help`                   | Show usage instructions                                                                                                                                  |               |
-| `--revision`               | Show the GitHub URL of the revision this binary was built from                                                                                           |               |
+| Option                     | Description                                                                                                                                               | Default       |
+|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `--master <code>`          | Country code of the master language, an ISO 2-letter code.                                                                                                | `en`          |
+| `--file-pattern <pattern>` | Filename pattern for messages files. `$1` is replaced by the language code.                                                                               | `messages.$1` |
+| `--path <dir>`             | Directory to look for messages files in, relative to the current directory.                                                                               | `conf`        |
+| `--fix`                    | *(format only)* Add missing translations to the relevant file, with the value prefixed by that file's target language code, e.g. `cy: `                   | off           |
+| `--translate`              | *(format only)* Generate missing translations using an AI service and add them to the relevant file. Cannot be combined with `--fix`.                     | off           |
+| `--model <id>`             | Override the AI model configured for `--translate`'s selected provider. Only valid together with `--translate`.                                           |               |
+| `--verbose`                | Print each translation request to the AI service before it is sent, and its response (or failure reason) after. Only valid together with `--translate`.   | off           |
+| `--strict`                 | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) or preceded by an "added by msgman" comment as missing, rather than translated. | off           |
+| `--require <codes>`        | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing.             | none          |
+| `--priority-keys <keys>`   | Comma-separated top-level keys to sort ahead of the rest, in the order given.                                                                             | none          |
+| `--help`                   | Show usage instructions.                                                                                                                                  |               |
+| `--revision`               | Show the GitHub URL of the revision this binary was built from.                                                                                           |               |
 
 `--revision` prints a link to the repository as it stood at the exact commit
 the running binary was compiled from, e.g. `https://github.com/dboresjo/msgman/tree/<sha>`. The commit and the `origin` remote URL are both read from the git checkout at build time, so a binary
@@ -160,6 +175,30 @@ brackets after the revision, e.g.
 file's language code. With the defaults, a project with `conf/messages.en` and
 `conf/messages.cy` is treated as having master language `en` and translation
 `cy`.
+
+### Configuration file (.msgman)
+
+`--master`, `--file-pattern`, `--path`, `--require` and `--priority-keys` can
+each also be set in a `.msgman` properties file, as `master`, `file-pattern`,
+`path`, `require` and `priority-keys` respectively (the latter two as
+comma-separated lists, e.g. `require = cy,fr`). The command line switch takes
+precedence over `.msgman` when both are set for the same option; the
+built-in default from the table above applies when neither is.
+
+`.msgman` is searched for in the following locations, and files found in more
+than one are merged, with the most local taking priority per key:
+
+* `.msgman` in the current directory
+* `$HOME/.msgman`
+* `/etc/msgman`
+
+The format is flat `key = value` properties: `#` starts a comment, and dotted
+keys scope a setting to something else, e.g. a per-provider AI setting like
+`openai.model = ...`.
+
+`--translate`'s AI provider settings (`provider`, `<provider>.model`,
+`<provider>.fallback-key`, `stealth`, `translation-context`) are configured
+through this same file; see [TRANSLATION.md](TRANSLATION.md) for those.
 
 ### Examples
 

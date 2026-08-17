@@ -92,7 +92,7 @@ object AiTranslate:
     */
   def translate(
       cwd: File,
-      config: AiConfig,
+      config: Config,
       translator: Translator,
       model: String,
       stealth: Boolean,

@@ -73,8 +73,8 @@ object MessagesFile:
 
     MessagesFile(blockComments.toMap, entries.result().toList, trailer)
 
-  def render(file: MessagesFile): String =
-    val sorted = file.entries.sortBy(_.key)(Key.ordering)
+  def render(file: MessagesFile, priority: List[String] = Nil): String =
+    val sorted = file.entries.sortBy(_.key)(Key.prioritized(priority))
     val sb = new StringBuilder
 
     var previousTop: Option[String] = None

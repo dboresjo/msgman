@@ -164,13 +164,28 @@ class MessagesFileSpec extends munit.FunSuite:
         |date.error.day = day
         |date.year = Year
         |
-        |service.name = Manage your gambling tax
+        |service.name = Foo Bar service
         |
         |site.back = Back
         |site.change = Change
         |site.continue = Continue
         |""".stripMargin
     assertEquals(MessagesFile.render(MessagesFile.parse(content)), content)
+
+  test("render with a priority list places that block ahead of the rest"):
+    val file = MessagesFile(List(Entry("site.back", "Back"), Entry("date.day", "Day"), Entry("phase", "Phase")))
+    assertEquals(MessagesFile.render(file, List("phase")), "phase = Phase\n\ndate.day = Day\n\nsite.back = Back\n")
+
+  test("render with several priority blocks orders them as given, not alphabetically"):
+    val file = MessagesFile(List(Entry("site.back", "Back"), Entry("date.day", "Day"), Entry("phase", "Phase")))
+    assertEquals(
+      MessagesFile.render(file, List("site", "phase")),
+      "site.back = Back\n\nphase = Phase\n\ndate.day = Day\n"
+    )
+
+  test("render with no priority list is unaffected (default parameter)"):
+    val file = MessagesFile(List(Entry("site.back", "Back"), Entry("date.day", "Day")))
+    assertEquals(MessagesFile.render(file), MessagesFile.render(file, Nil))
 
   test("re-rendering a single-hash mid-block comment normalises it to double-hash, stably"):
     val original = "key.a = a\n# note\nkey.b = b\n"

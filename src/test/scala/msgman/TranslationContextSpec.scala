@@ -60,14 +60,14 @@ class TranslationContextSpec extends munit.FunSuite:
   test("build assembles the full block context"):
     val cwd = tempDir()
     write(cwd, "build.sbt", "name := \"msgman\"\ndescription := \"manages messages files\"\n")
-    write(cwd, "TRANSLATION-CONTEXT.md", "This is a UK tax service.")
-    val context = TranslationContext.build(cwd, AiConfig(), master, target, "site", Set("site.change"), "en", "cy")
+    write(cwd, "TRANSLATION-CONTEXT.md", "This is a foo bar service.")
+    val context = TranslationContext.build(cwd, Config(), master, target, "site", Set("site.change"), "en", "cy")
     assertEquals(
       context,
       BlockContext(
         projectName = Some("msgman"),
         projectDescription = Some("manages messages files"),
-        translationContext = Some("This is a UK tax service."),
+        translationContext = Some("This is a foo bar service."),
         topLevelKey = "site",
         siblingKeys = List(SiblingKey("site.back", "Back", Some("Yn ol"))),
         masterLanguageCode = "en",
@@ -79,7 +79,7 @@ class TranslationContextSpec extends munit.FunSuite:
 
   test("build tolerates a missing build.sbt and TRANSLATION-CONTEXT.md"):
     val cwd = tempDir()
-    val context = TranslationContext.build(cwd, AiConfig(), master, target, "site", Set("site.change"), "en", "cy")
+    val context = TranslationContext.build(cwd, Config(), master, target, "site", Set("site.change"), "en", "cy")
     assertEquals(context.projectName, None)
     assertEquals(context.projectDescription, None)
     assertEquals(context.translationContext, None)
@@ -89,7 +89,7 @@ class TranslationContextSpec extends munit.FunSuite:
     write(cwd, "docs/CONTEXT.md", "custom context")
     val context = TranslationContext.build(
       cwd,
-      AiConfig(translationContext = Some("docs/CONTEXT.md")),
+      Config(translationContext = Some("docs/CONTEXT.md")),
       master,
       target,
       "site",

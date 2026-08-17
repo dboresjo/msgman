@@ -32,7 +32,7 @@ class AiTranslateSpec extends munit.FunSuite:
     val cwd = tempDir()
     val translator = new FakeTranslator(PartialFunction.empty)
     val target = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.change", "Newid")))
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing, Nil)
     assertEquals(result.fatal, None)
@@ -44,7 +44,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.change") => TranslationOutcome.Success(TranslationResponse(Map("site.change" -> "Newid")))
     })
     val target = MessagesFile(List(Entry("site.back", "Yn ol")))
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries, List(Entry("site.change", "Newid", List("added by msgman using claude-sonnet-5"))))
     assertEquals(result.stillMissing, Nil)
 
@@ -54,7 +54,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.change") => TranslationOutcome.Success(TranslationResponse(Map("site.change" -> "Newid")))
     })
     val target = MessagesFile(List(Entry("site.back", "Yn ol")))
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = true, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = true, master, target, "en", "cy")
     assertEquals(result.entries, List(Entry("site.change", "Newid")))
 
   test("two missing keys in the same block are batched into a single request"):
@@ -64,7 +64,7 @@ class AiTranslateSpec extends munit.FunSuite:
         TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol", "site.change" -> "Newid")))
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries.map(_.key).toSet, Set("site.back", "site.change"))
     assertEquals(result.stillMissing, Nil)
     assertEquals(translator.requests.size, 1)
@@ -77,7 +77,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("phase")     => TranslationOutcome.Success(TranslationResponse(Map("phase" -> "Cyfnod")))
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master2, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master2, target, "en", "cy")
     assertEquals(result.entries.map(_.key).toSet, Set("site.back", "phase"))
     assertEquals(result.stillMissing, Nil)
     assertEquals(translator.requests.size, 2)
@@ -90,7 +90,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.change")               => TranslationOutcome.Success(TranslationResponse(Map("site.change" -> "Newid")))
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries.map(_.key).toSet, Set("site.back", "site.change"))
     assertEquals(result.stillMissing, Nil)
     assertEquals(translator.requests.size, 3)
@@ -104,7 +104,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.change") => TranslationOutcome.Success(TranslationResponse(Map("site.change" -> "Newid")))
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries.map(_.key).toSet, Set("site.back", "site.change"))
     assertEquals(result.stillMissing, Nil)
 
@@ -115,7 +115,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.hello") => TranslationOutcome.Success(TranslationResponse(Map("site.hello" -> "Bonjour")))
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, masterWithPlaceholder, target, "en", "fr")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, masterWithPlaceholder, target, "en", "fr")
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing.map(_._1), List("site.hello"))
     assert(result.stillMissing.head._2.nonEmpty)
@@ -124,7 +124,7 @@ class AiTranslateSpec extends munit.FunSuite:
     val cwd = tempDir()
     val translator = new FakeTranslator(PartialFunction.empty) // every call falls through to Failure("unhandled")
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing.map(_._1).toSet, Set("site.back", "site.change"))
     assert(result.stillMissing.forall(_._2 == "unhandled"))
@@ -138,7 +138,7 @@ class AiTranslateSpec extends munit.FunSuite:
         Entry("site.change", "Newid", List("added by msgman using claude-sonnet-5"))
       )
     )
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing, Nil)
     assertEquals(translator.requests.size, 0)
@@ -149,7 +149,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.change") => TranslationOutcome.Success(TranslationResponse(Map("site.change" -> "Newid")))
     })
     val target = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.change", "cy: Change")))
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.entries, List(Entry("site.change", "Newid", List("added by msgman using claude-sonnet-5"))))
     assertEquals(result.stillMissing, Nil)
 
@@ -161,7 +161,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.change") => TranslationOutcome.Success(TranslationResponse(Map("site.change" -> "Newid")))
     })
     val target = MessagesFile(List(Entry("site.back", "Yn ol")))
-    AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     val request = translator.requests.head
     assertEquals(request.model, "claude-sonnet-5")
     assertEquals(request.context.topLevelKey, "site")
@@ -177,7 +177,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.back", "site.change") => TranslationOutcome.Failure("model no longer available", fatal = true)
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.fatal, Some("model no longer available"))
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing, Nil)
@@ -193,7 +193,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, masterMultiBlock, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, masterMultiBlock, target, "en", "cy")
     assertEquals(result.fatal, Some("model no longer available"))
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing, Nil)
@@ -206,7 +206,7 @@ class AiTranslateSpec extends munit.FunSuite:
       case keys if keys == Set("site.back")                => TranslationOutcome.Failure("model no longer available", fatal = true)
     })
     val target = MessagesFile(Nil)
-    val result = AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    val result = AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
     assertEquals(result.fatal, Some("model no longer available"))
     assertEquals(result.entries, Nil)
     assertEquals(result.stillMissing, Nil)
@@ -220,7 +220,7 @@ class AiTranslateSpec extends munit.FunSuite:
     })
     val target = MessagesFile(List(Entry("site.back", "Yn ol")))
     // Just exercises the default log parameter; nothing to assert beyond not throwing.
-    AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
+    AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy")
 
   test("log reports a request before and its response after, for a successful call"):
     val cwd = tempDir()
@@ -229,7 +229,7 @@ class AiTranslateSpec extends munit.FunSuite:
     })
     val target = MessagesFile(List(Entry("site.back", "Yn ol")))
     val logged = ListBuffer.empty[String]
-    AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy", logged.append)
+    AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy", logged.append)
     assertEquals(
       logged.toList,
       List(
@@ -247,7 +247,7 @@ class AiTranslateSpec extends munit.FunSuite:
     })
     val target = MessagesFile(Nil)
     val logged = ListBuffer.empty[String]
-    AiTranslate.translate(cwd, AiConfig(), translator, "gemini-3.6-flash", stealth = false, nestedMaster, target, "en", "cy", logged.append)
+    AiTranslate.translate(cwd, Config(), translator, "gemini-3.6-flash", stealth = false, nestedMaster, target, "en", "cy", logged.append)
     assertEquals(
       logged.toList,
       List(
@@ -261,7 +261,7 @@ class AiTranslateSpec extends munit.FunSuite:
     val translator = new FakeTranslator(PartialFunction.empty)
     val target = MessagesFile(List(Entry("site.back", "Yn ol")))
     val logged = ListBuffer.empty[String]
-    AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy", logged.append)
+    AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy", logged.append)
     assertEquals(
       logged.toList,
       List(
@@ -281,7 +281,7 @@ class AiTranslateSpec extends munit.FunSuite:
     })
     val target = MessagesFile(Nil)
     val logged = ListBuffer.empty[String]
-    AiTranslate.translate(cwd, AiConfig(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy", logged.append)
+    AiTranslate.translate(cwd, Config(), translator, "claude-sonnet-5", stealth = false, master, target, "en", "cy", logged.append)
     assertEquals(
       logged.toList,
       List(
