@@ -96,10 +96,12 @@ raw build failure.
 `--translate` (documented in [TRANSLATION.md](TRANSLATION.md)) needs at least
 one AI provider linked into the binary. Pass
 `--with-ai <provider>` to the install script, repeated for each provider to
-link in (`openai`, `claude`, `gemini`):
+link in (`openai`, `claude`, `gemini`), or pass `--with-ai all` once to link
+in every supported provider:
 
 ```
 ./install --with-ai openai --with-ai claude
+./install --with-ai all
 ```
 
 Any provider needs libcurl and libcrypto (OpenSSL) installed on the machine,

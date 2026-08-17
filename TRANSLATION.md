@@ -194,9 +194,9 @@ retry logged as its own request/response pair.
 
 `--translate` needs at least one AI provider linked into the binary. The
 *install* script accepts a repeatable `--with-ai <provider>` flag, one per
-provider to link in (`openai`, `claude`, or `gemini`). If omitted entirely,
-no provider is linked in and `--translate` is unavailable in the built
-binary.
+provider to link in (`openai`, `claude`, or `gemini`), or `--with-ai all` to
+link in every supported provider in one go. If omitted entirely, no provider
+is linked in and `--translate` is unavailable in the built binary.
 
 Any provider needs libcurl and libcrypto (OpenSSL) installed on the machine,
 at both build and run time, since sttp's Scala Native backend talks HTTP

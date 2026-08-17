@@ -6,10 +6,11 @@
 # Usage: install [--with-ai <provider>]...
 #
 # --with-ai adds support for the --translate feature's AI provider, and may
-# be repeated to link in more than one (openai, claude, gemini). If omitted
-# entirely, no AI provider is linked in and --translate is unavailable in the
-# built binary. Any provider needs libcurl and libcrypto (OpenSSL) at build
-# and run time (see TRANSLATION.md); the script checks for them up front.
+# be repeated to link in more than one (openai, claude, gemini), or given
+# once with "all" to link in every supported provider. If omitted entirely,
+# no AI provider is linked in and --translate is unavailable in the built
+# binary. Any provider needs libcurl and libcrypto (OpenSSL) at build and
+# run time (see TRANSLATION.md); the script checks for them up front.
 set -euo pipefail
 
 BINARY_NAME="msgman"
@@ -37,13 +38,22 @@ AI_PROVIDERS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --with-ai)
-      [ $# -ge 2 ] || die "--with-ai requires a provider argument: ${VALID_AI_PROVIDERS[*]}"
-      is_valid_ai_provider "$2" \
-        || die "--with-ai: unknown provider '$2' (expected one of: ${VALID_AI_PROVIDERS[*]})"
-      case " ${AI_PROVIDERS[*]-} " in
-        *" $2 "*) ;;
-        *) AI_PROVIDERS+=("$2") ;;
-      esac
+      [ $# -ge 2 ] || die "--with-ai requires a provider argument: ${VALID_AI_PROVIDERS[*]}, or all"
+      if [ "$2" = "all" ]; then
+        for p in "${VALID_AI_PROVIDERS[@]}"; do
+          case " ${AI_PROVIDERS[*]-} " in
+            *" $p "*) ;;
+            *) AI_PROVIDERS+=("$p") ;;
+          esac
+        done
+      else
+        is_valid_ai_provider "$2" \
+          || die "--with-ai: unknown provider '$2' (expected one of: ${VALID_AI_PROVIDERS[*]}, or all)"
+        case " ${AI_PROVIDERS[*]-} " in
+          *" $2 "*) ;;
+          *) AI_PROVIDERS+=("$2") ;;
+        esac
+      fi
       shift 2
       ;;
     *)
