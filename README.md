@@ -77,6 +77,23 @@ If a required tool (`sbt`, or the C compiler/LLVM the Scala Native toolchain
 needs) is missing, the script stops with an explanatory error rather than a
 raw build failure.
 
+### AI translation support (optional)
+
+`--translate` (documented in [TRANSLATION.md](TRANSLATION.md)) needs at least
+one AI provider linked into the binary. Pass
+`--with-ai <provider>` to the install script, repeated for each provider to
+link in (`openai`, `claude`, `gemini`):
+
+```
+./install --with-ai openai --with-ai claude
+```
+
+Any provider needs libcurl and libcrypto (OpenSSL) installed on the machine,
+at both build and run time (e.g. the `libcurl4-openssl-dev` and `libssl-dev`
+packages on Debian/Ubuntu). The script checks for both up front when
+`--with-ai` is given, and fails with a clear message before attempting a build
+if either is missing.
+
 To build without installing, or to install by hand:
 
 ```
@@ -112,27 +129,31 @@ msgman <format|verify> [options]
 
 ### Options
 
-| Option | Description | Default |
-|---|---|---|
-| `--master <code>` | Country code of the master language, an ISO 2-letter code | `en` |
-| `--file-pattern <pattern>` | Filename pattern for messages files. `$1` is replaced by the language code | `messages.$1` |
-| `--path <dir>` | Directory to look for messages files in, relative to the current directory | `conf` |
-| `--fix` | *(format only)* Add missing translations to the relevant file, with the value prefixed by that file's target language code, e.g. `cy: ` | off |
-| `--strict` | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) as missing, rather than translated | off |
-| `--require <codes>` | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing | none |
-| `--help` | Show usage instructions | |
-| `--revision` | Show the GitHub URL of the revision this binary was built from | |
+| Option                     | Description                                                                                                                                              | Default       |
+|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `--master <code>`          | Country code of the master language, an ISO 2-letter code                                                                                                | `en`          |
+| `--file-pattern <pattern>` | Filename pattern for messages files. `$1` is replaced by the language code                                                                               | `messages.$1` |
+| `--path <dir>`             | Directory to look for messages files in, relative to the current directory                                                                               | `conf`        |
+| `--fix`                    | *(format only)* Add missing translations to the relevant file, with the value prefixed by that file's target language code, e.g. `cy: `                  | off           |
+| `--translate`              | *(format only)* Generate missing translations using an AI service and add them to the relevant file. Cannot be combined with `--fix`.                    | off           |
+| `--model <id>`             | Override the AI model configured for `--translate`'s selected provider. Only valid together with `--translate`                                           |               |
+| `--verbose`                | Print each translation request to the AI service before it is sent, and its response (or failure reason) after. Only valid together with `--translate`   | off           |
+| `--strict`                 | *(verify only)* Treat a value prefixed with a language code (e.g. `en: `) or preceded by an "added by msgman" comment as missing, rather than translated | off           |
+| `--require <codes>`        | Require a messages file to exist for each of a comma-separated list of ISO 2-letter country codes; a fatal error is raised if any is missing             | none          |
+| `--help`                   | Show usage instructions                                                                                                                                  |               |
+| `--revision`               | Show the GitHub URL of the revision this binary was built from                                                                                           |               |
 
 `--revision` prints a link to the repository as it stood at the exact commit
-the running binary was compiled from, e.g.
-`https://github.com/dboresjo/msgman/tree/<sha>`. The commit and the `origin`
-remote URL are both read from the git checkout at build time, so a binary
+the running binary was compiled from, e.g. `https://github.com/dboresjo/msgman/tree/<sha>`. The commit and the `origin` remote URL are both read from the git checkout at build time, so a binary
 built from a fork links back to that fork rather than a hardcoded upstream
 repository. If the working tree had uncommitted changes at build time, the
 output is suffixed with `(dirty: built with uncommitted changes)`; if no
 `origin` remote could be read at build time (e.g. a tarball checkout, or a CI
 job with no remote configured), it falls back to printing the bare commit SHA
-with a note that the repository URL is unknown.
+with a note that the repository URL is unknown. If the binary was built with
+AI support (see `--with-ai` below), the linked-in providers are listed in
+brackets after the revision, e.g.
+`https://github.com/dboresjo/msgman/tree/<sha> [claude, openai]`.
 
 `msgman` discovers language files by matching every filename directly inside
 `--path` against `--file-pattern`; the text captured in place of `$1` is that
@@ -157,6 +178,13 @@ left over for a key the master no longer has:
 msgman format --fix
 ```
 
+Generate any missing translations using the AI provider configured in
+`.msgman` (requires a binary built with `--with-ai`):
+
+```
+msgman format --translate
+```
+
 Use a different directory and filename convention:
 
 ```
@@ -165,12 +193,13 @@ msgman verify --path app/messages --file-pattern messages_$1.properties
 
 ## Exit codes
 
-* `0` — success.
-* `1` — a messages file is malformed, the master (or a `--require`d) language
+* `0` Success.
+* `1` A messages file is malformed, the master (or required) language
   file could not be found, a file has a duplicate key with conflicting values
   (`format`) or any duplicate key at all (`verify`), or (for `verify`) a file
   is not canonical or a translation is missing.
-* `2` — invalid command line arguments.
+* `2` Invalid command line arguments.
+* `3` AI translation was attempted and failed (network error, rate limit, malformed response, or a placeholder-validation failure).
 
 ## Development
 

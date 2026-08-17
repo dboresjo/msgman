@@ -2,11 +2,20 @@
 # Builds msgman from a clean state and installs it: system-wide (/usr/local/bin)
 # if the machine running this script has passwordless sudo available, otherwise
 # locally to ~/.local/bin for the current user.
+#
+# Usage: install [--with-ai <provider>]...
+#
+# --with-ai adds support for the --translate feature's AI provider, and may
+# be repeated to link in more than one (openai, claude, gemini). If omitted
+# entirely, no AI provider is linked in and --translate is unavailable in the
+# built binary. Any provider needs libcurl and libcrypto (OpenSSL) at build
+# and run time (see TRANSLATION.md); the script checks for them up front.
 set -euo pipefail
 
 BINARY_NAME="msgman"
 SYSTEM_DIR="/usr/local/bin"
 LOCAL_DIR="${HOME}/.local/bin"
+VALID_AI_PROVIDERS=("openai" "claude" "gemini")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -16,13 +25,64 @@ die() {
   exit 1
 }
 
+is_valid_ai_provider() {
+  local p="$1" v
+  for v in "${VALID_AI_PROVIDERS[@]}"; do
+    [ "$v" = "$p" ] && return 0
+  done
+  return 1
+}
+
+AI_PROVIDERS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-ai)
+      [ $# -ge 2 ] || die "--with-ai requires a provider argument: ${VALID_AI_PROVIDERS[*]}"
+      is_valid_ai_provider "$2" \
+        || die "--with-ai: unknown provider '$2' (expected one of: ${VALID_AI_PROVIDERS[*]})"
+      case " ${AI_PROVIDERS[*]-} " in
+        *" $2 "*) ;;
+        *) AI_PROVIDERS+=("$2") ;;
+      esac
+      shift 2
+      ;;
+    *)
+      die "unknown argument: '$1'"
+      ;;
+  esac
+done
+
+# Checks whether a C header is available at build time, by asking the C
+# compiler to find it, the same way Scala Native's own C compile step will
+# when nativeLink runs. Deliberately not based on pkg-config or ldconfig: a
+# machine can have a library's runtime .so installed (so both would report
+# it as "available") without the matching development/headers package, which
+# is what actually gates a successful build.
+header_available() {
+  local header="$1"
+  local cc="${CC:-cc}"
+  command -v "$cc" >/dev/null 2>&1 || return 1
+  echo "#include <${header}>" | "$cc" -E -x c - >/dev/null 2>&1
+}
+
+if [ "${#AI_PROVIDERS[@]}" -eq 0 ]; then
+  echo "Building without --translate support (no AI provider specified)"
+else
+  echo "Building with --translate support for: ${AI_PROVIDERS[*]}"
+  header_available "curl/curl.h" \
+    || die "--with-ai requires libcurl development headers (curl/curl.h), which were not found. Install them (e.g. the libcurl4-openssl-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
+  header_available "openssl/opensslv.h" \
+    || die "--with-ai requires OpenSSL development headers, which were not found. Install them (e.g. the libssl-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
+fi
+AI_PROVIDERS_PROP="$(IFS=,; echo "${AI_PROVIDERS[*]-}")"
+
 command -v sbt >/dev/null 2>&1 \
   || die "sbt is required to build ${BINARY_NAME} but was not found on PATH. Install it: https://www.scala-sbt.org/download.html"
 command -v install >/dev/null 2>&1 \
   || die "the 'install' command is required but was not found on PATH."
 
 echo "Building ${BINARY_NAME} (sbt clean nativeLink)..."
-if ! sbt -no-colors "clean; nativeLink"; then
+if ! sbt -no-colors "-Dmsgman.aiProviders=${AI_PROVIDERS_PROP}" "clean; nativeLink"; then
   die "build failed (see sbt output above). If this looks like a Scala Native toolchain problem, check that a C compiler and LLVM are installed: https://scala-native.org/en/stable/user/setup.html"
 fi
 

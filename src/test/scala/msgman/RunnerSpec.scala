@@ -3,9 +3,17 @@ package msgman
 import java.io.{ByteArrayOutputStream, File, PrintStream}
 import java.nio.file.Files
 
+private class FakeTranslator(behaviour: PartialFunction[Set[String], TranslationOutcome]) extends Translator:
+  val requests: scala.collection.mutable.ListBuffer[TranslationRequest] = scala.collection.mutable.ListBuffer.empty
+  def translateBlock(request: TranslationRequest): TranslationOutcome =
+    requests += request
+    behaviour.applyOrElse(request.targets.map(_.subKey).toSet, (_: Set[String]) => TranslationOutcome.Failure("unhandled"))
+
 class RunnerSpec extends munit.FunSuite:
 
   private def tempCwd(): File = Files.createTempDirectory("msgman-runner").toFile
+  private def tempHome(): File = Files.createTempDirectory("msgman-runner-home").toFile
+  private def tempEtc(): File = Files.createTempDirectory("msgman-runner-etc").toFile
 
   private def confDir(cwd: File): File =
     val dir = new File(cwd, "conf")
@@ -31,7 +39,23 @@ class RunnerSpec extends munit.FunSuite:
     val errBytes = new ByteArrayOutputStream()
     val out = new PrintStream(outBytes, true, "UTF-8")
     val err = new PrintStream(errBytes, true, "UTF-8")
-    val code = Runner.run(args.toArray, cwd, out, err, testRevision)
+    val code = Runner.run(args.toArray, cwd, out, err, testRevision, env = _ => None)
+    Result(code, outBytes.toString("UTF-8"), errBytes.toString("UTF-8"))
+
+  // Defaults to "every provider has a key", so tests that aren't specifically
+  // about API key resolution don't need to think about it.
+  private def runWithAi(
+      cwd: File,
+      home: File,
+      etc: File,
+      providers: Map[String, Translator],
+      args: String*
+  )(env: String => Option[String] = _ => Some("test-key")): Result =
+    val outBytes = new ByteArrayOutputStream()
+    val errBytes = new ByteArrayOutputStream()
+    val out = new PrintStream(outBytes, true, "UTF-8")
+    val err = new PrintStream(errBytes, true, "UTF-8")
+    val code = Runner.run(args.toArray, cwd, out, err, testRevision, providers, home, etc, env)
     Result(code, outBytes.toString("UTF-8"), errBytes.toString("UTF-8"))
 
   test("--help prints usage and exits successfully"):
@@ -298,3 +322,242 @@ class RunnerSpec extends munit.FunSuite:
     write(dir, "messages.cy", "site.back = Yn ol\n")
     val result = runIn(cwd, "verify", "--master", "cy")
     assertEquals(result.exitCode, ExitCode.Success)
+
+  test("--translate in a build with no AI provider linked in at all is a fatal error"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("built without --translate support"))
+    assert(result.err.contains("--with-ai"))
+
+  test("--translate with no AI provider linked reports that even when .msgman selects one"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("built without --translate support"))
+
+  test("--translate with no provider configured, but more than one linked in, is an ambiguous fatal error"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator, "openai" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("requires a provider to be selected"))
+    assert(result.err.contains("linked: claude, openai"))
+
+  test("--translate with no provider configured auto-selects the single provider linked in"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "claude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(cyFile), "## added by msgman using claude-sonnet-5\nsite.back = Yn ol\n")
+
+  test("--translate with a provider not among the ones linked into this build is a fatal error"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\n")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("openai" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("'claude'"))
+    assert(result.err.contains("not linked"))
+    assert(result.err.contains("linked: openai"))
+
+  test("--translate with a provider not linked reports the providers that are, sorted"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\n")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("openai" -> translator, "gemini" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("linked: gemini, openai"))
+
+  test("--translate with no API key available is a fatal error, without ever calling the translator"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\nsite.change = Change\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")(_ => None)
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("no API key configured for provider 'claude'"))
+    assert(result.err.contains("ANTHROPIC_API_KEY"))
+    assert(result.err.contains("claude.fallback-key"))
+    assertEquals(translator.requests.size, 0)
+
+  test("--translate falls back to the configured fallback key when the env var is not set"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\nclaude.fallback-key = sk-fallback\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")(_ => None)
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(cyFile), "## added by msgman using claude-sonnet-5\nsite.back = Yn ol\n")
+
+  test("--translate with no model configured is a fatal error"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\n")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assert(result.err.contains("no AI model configured"))
+
+  test("--translate successfully translates a missing key and tags it"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(cyFile), "## added by msgman using claude-sonnet-5\nsite.back = Yn ol\n")
+    assert(!result.out.contains("requesting translation"))
+
+  test("--verbose prints each request before, and its response after"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate", "--verbose")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    val requestIndex = result.out.indexOf("msgman: [cy] requesting translation of site (back) from claude-sonnet-5")
+    val responseIndex = result.out.indexOf("msgman: [cy] received translation of site: back = Yn ol")
+    assert(requestIndex >= 0 && responseIndex >= 0 && requestIndex < responseIndex)
+
+  test("--verbose reports a failed request too"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate", "--verbose")()
+    assertEquals(result.exitCode, ExitCode.TranslationFailure)
+    assert(result.out.contains("msgman: [cy] translation of site failed: unhandled"))
+
+  test("--model overrides the configured model"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate", "--model", "claude-opus-5")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(cyFile), "## added by msgman using claude-opus-5\nsite.back = Yn ol\n")
+
+  test("stealth mode omits the added-by-msgman comment"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\nstealth = true\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "Yn ol")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(cyFile), "site.back = Yn ol\n")
+
+  test("a failed translation leaves the key missing and exits with the translation-failure code"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\nsite.change = Change\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator(PartialFunction.empty)
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.TranslationFailure)
+    assert(result.err.contains("translation failed [cy] site.back: unhandled"))
+    assert(result.err.contains("translation failed [cy] site.change: unhandled"))
+    assertEquals(read(cyFile), "")
+
+  test("a fatal translation failure exits fatally, without writing any file, and reports one clear message"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = gemini-2.5-flash\n")
+    val translator = new FakeTranslator({
+      case _ => TranslationOutcome.Failure("This model models/gemini-2.5-flash is no longer available to new users.", fatal = true)
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    assertEquals(result.err, "msgman: This model models/gemini-2.5-flash is no longer available to new users.\n")
+    assertEquals(read(cyFile), "")
+    assertEquals(translator.requests.size, 1)
+
+  test("a fatal translation failure stops before attempting any further target language file"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    write(dir, "messages.cy", "")
+    write(dir, "messages.fr", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator({
+      case _ => TranslationOutcome.Failure("no API key configured", fatal = true)
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Fatal)
+    // cy and fr are processed alphabetically; a single request means the run
+    // stopped after the first target language rather than trying both.
+    assertEquals(translator.requests.size, 1)
+
+  test("--translate handles more than one target language file"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val cyFile = write(dir, "messages.cy", "")
+    val frFile = write(dir, "messages.fr", "")
+    write(cwd, ".msgman", "provider = claude\nclaude.model = claude-sonnet-5\n")
+    val translator = new FakeTranslator({
+      case keys if keys == Set("site.back") => TranslationOutcome.Success(TranslationResponse(Map("site.back" -> "translated")))
+    })
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map("claude" -> translator), "format", "--translate")()
+    assertEquals(result.exitCode, ExitCode.Success)
+    assertEquals(read(cyFile), "## added by msgman using claude-sonnet-5\nsite.back = translated\n")
+    assertEquals(read(frFile), "## added by msgman using claude-sonnet-5\nsite.back = translated\n")
+
+  test("--translate is not combined with --fix"):
+    val cwd = tempCwd()
+    val dir = confDir(cwd)
+    write(dir, "messages.en", "site.back = Back\n")
+    val result = runWithAi(cwd, tempHome(), tempEtc(), Map.empty, "format", "--translate", "--fix")()
+    assertEquals(result.exitCode, ExitCode.UsageError)
+    assert(result.err.contains("--translate cannot be used together with --fix"))

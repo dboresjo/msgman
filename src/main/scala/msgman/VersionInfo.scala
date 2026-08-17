@@ -3,7 +3,9 @@ package msgman
 /** Renders the `--revision` output: a link to the repository as it stood at
   * the exact commit the running binary was built from. `commitSha`, `dirty`
   * and the raw `origin` remote URL come from `BuildInfo`, which is generated
-  * at compile time by build.sbt from the local git checkout.
+  * at compile time by build.sbt from the local git checkout. `aiProviders`
+  * also comes from `BuildInfo`; it lists the AI providers linked into this
+  * binary via `--with-ai`, and is empty when the binary has no AI support.
   */
 object VersionInfo:
 
@@ -23,7 +25,7 @@ object VersionInfo:
       case httpRemote(host, path) => Some(s"https://$host/$path")
       case _                      => None
 
-  def render(commitSha: String, dirty: Boolean, repoUrl: Option[String]): String =
+  def render(commitSha: String, dirty: Boolean, repoUrl: Option[String], aiProviders: List[String] = Nil): String =
     val notes = List(
       if dirty then Some("dirty: built with uncommitted changes") else None,
       if repoUrl.isEmpty then Some("repository URL unknown: no git remote found at build time") else None
@@ -32,4 +34,5 @@ object VersionInfo:
     val base = repoUrl match
       case Some(url) => s"$url/tree/$commitSha"
       case None      => s"commit $commitSha"
-    s"$base$suffix\n"
+    val providers = if aiProviders.isEmpty then "" else s" [${aiProviders.sorted.mkString(", ")}]"
+    s"$base$providers$suffix\n"
