@@ -75,6 +75,21 @@ header_available() {
   echo "#include <${header}>" | "$cc" -E -x c - >/dev/null 2>&1
 }
 
+# Checks whether a library is available to the linker, by asking the C
+# compiler to link a trivial program against it, the same way Scala Native's
+# own link step will when nativeLink runs. Unlike header_available, this is
+# a link-time check with no header involved: it's for libidn2, which the
+# sttp curl backend links against explicitly regardless of whether the code
+# actually calls into it, so a missing header wouldn't catch it, only a
+# missing linker symlink (typically only shipped in the library's -dev
+# package, not its runtime .so) would.
+lib_linkable() {
+  local lib="$1"
+  local cc="${CC:-cc}"
+  command -v "$cc" >/dev/null 2>&1 || return 1
+  echo 'int main(void) { return 0; }' | "$cc" -x c - -o /dev/null "-l${lib}" >/dev/null 2>&1
+}
+
 if [ "${#AI_PROVIDERS[@]}" -eq 0 ]; then
   echo "Building without --translate support (no AI provider specified)"
 else
@@ -83,6 +98,8 @@ else
     || die "--with-ai requires libcurl development headers (curl/curl.h), which were not found. Install them (e.g. the libcurl4-openssl-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
   header_available "openssl/opensslv.h" \
     || die "--with-ai requires OpenSSL development headers, which were not found. Install them (e.g. the libssl-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
+  lib_linkable "idn2" \
+    || die "--with-ai requires libidn2's development files (the linker library, not just its runtime .so), which were not found. Install them (e.g. the libidn2-dev package on Debian/Ubuntu), or omit --with-ai to build without --translate support."
 fi
 AI_PROVIDERS_PROP="$(IFS=,; echo "${AI_PROVIDERS[*]-}")"
 

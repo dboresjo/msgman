@@ -42,7 +42,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libcurl4-openssl-dev libssl-dev
+          sudo apt-get install -y clang libcurl4-openssl-dev libssl-dev libidn2-dev
       - name: Build (with AI translation support for all providers)
         run: sbt -no-colors "-Dmsgman.aiProviders=openai,claude,gemini" nativeLink
       - name: Package .deb
@@ -78,12 +78,14 @@ jobs:
       - name: Install build dependencies
         run: |
           # curl's headers ship with the Xcode SDK, but Apple stopped shipping
-          # OpenSSL headers years ago, so it needs to come from Homebrew; its
+          # OpenSSL headers years ago, and doesn't ship libidn2 at all (the
+          # sttp curl backend links against it explicitly, whether or not the
+          # code actually uses it), so both need to come from Homebrew; their
           # include/lib dirs aren't on clang's default search path, so they're
           # exported for the sbt/nativeLink step below.
-          brew install openssl@3
-          echo "CPATH=$(brew --prefix openssl@3)/include" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$(brew --prefix openssl@3)/lib" >> "$GITHUB_ENV"
+          brew install openssl@3 libidn2
+          echo "CPATH=$(brew --prefix openssl@3)/include:$(brew --prefix libidn2)/include" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(brew --prefix openssl@3)/lib:$(brew --prefix libidn2)/lib" >> "$GITHUB_ENV"
       - name: Build (with AI translation support for all providers)
         run: sbt -no-colors "-Dmsgman.aiProviders=openai,claude,gemini" nativeLink
       - name: Package tarball

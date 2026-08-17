@@ -106,12 +106,11 @@ in every supported provider:
 ./install --with-ai all
 ```
 
-Any provider needs libcurl and libcrypto (OpenSSL) installed on the machine,
-at both build and run time (e.g. the `libcurl4-openssl-dev` and `libssl-dev`
-packages on Debian/Ubuntu). The script checks for both up front when
-`--with-ai` is given, and fails with a clear message before attempting a build
-if either is missing.
-
+Any provider needs libcurl, libcrypto (OpenSSL) and libidn2 installed on the
+machine, at both build and run time (e.g. the `libcurl4-openssl-dev`,
+`libssl-dev` and `libidn2-dev` packages on Debian/Ubuntu). The script checks
+for all three up front when `--with-ai` is given, and fails with a clear
+message before attempting a build if any is missing.
 
 ### Debian package
 
@@ -124,7 +123,7 @@ sudo apt install ./msgman_<version>_<arch>.deb
 ```
 
 No JDK or Scala Native toolchain is required for this route, only the
-package's own runtime dependencies (libc, and libcurl/libssl for
+package's own runtime dependencies (libc, and libcurl/libssl/libidn2 for
 `--translate`), which apt resolves automatically.
 
 ## Usage

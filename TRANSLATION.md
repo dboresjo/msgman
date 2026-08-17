@@ -198,12 +198,13 @@ provider to link in (`openai`, `claude`, or `gemini`), or `--with-ai all` to
 link in every supported provider in one go. If omitted entirely, no provider
 is linked in and `--translate` is unavailable in the built binary.
 
-Any provider needs libcurl and libcrypto (OpenSSL) installed on the machine,
-at both build and run time, since sttp's Scala Native backend talks HTTP
-through curl. The install script checks for both up front when `--with-ai`
-is given, and fails with a clear message before attempting a build if either
-is missing. A plain build with no `--with-ai` flags needs nothing beyond
-libc.
+Any provider needs libcurl, libcrypto (OpenSSL) and libidn2 installed on the
+machine, at both build and run time, since sttp's Scala Native backend talks
+HTTP through curl, which links against idn2 for internationalized domain
+names regardless of whether msgman's own code uses that. The install script
+checks for all three up front when `--with-ai` is given, and fails with a
+clear message before attempting a build if any is missing. A plain build
+with no `--with-ai` flags needs nothing beyond libc.
 
 Each provider has a real (`src/main/scala-ai-<provider>`) and a stub
 (`src/main/scala-ai-<provider>-stub`) source directory, both defining the
