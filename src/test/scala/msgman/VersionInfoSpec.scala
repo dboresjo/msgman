@@ -50,3 +50,21 @@ class VersionInfoSpec extends munit.FunSuite:
       VersionInfo.render("abc123", dirty = true, repoUrl = None),
       "commit abc123 (dirty: built with uncommitted changes; repository URL unknown: no git remote found at build time)\n"
     )
+
+  test("render omits the AI providers bracket when the binary has no AI support"):
+    assertEquals(
+      VersionInfo.render("abc123", dirty = false, repoUrl = Some("https://github.com/dboresjo/msgman"), aiProviders = Nil),
+      "https://github.com/dboresjo/msgman/tree/abc123\n"
+    )
+
+  test("render lists the linked-in AI providers in brackets, sorted, after the revision url"):
+    assertEquals(
+      VersionInfo.render("abc123", dirty = false, repoUrl = Some("https://github.com/dboresjo/msgman"), aiProviders = List("openai", "claude")),
+      "https://github.com/dboresjo/msgman/tree/abc123 [claude, openai]\n"
+    )
+
+  test("render places the AI providers bracket before the dirty/unknown-remote notes"):
+    assertEquals(
+      VersionInfo.render("abc123", dirty = true, repoUrl = None, aiProviders = List("gemini")),
+      "commit abc123 [gemini] (dirty: built with uncommitted changes; repository URL unknown: no git remote found at build time)\n"
+    )

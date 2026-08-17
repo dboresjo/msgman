@@ -9,7 +9,7 @@ object Main:
   // test runner itself.
   def main(args: Array[String]): Unit =
     val repoUrl = BuildInfo.remoteUrl.flatMap(VersionInfo.parseRemoteUrl)
-    val revision = VersionInfo.render(BuildInfo.commitSha, BuildInfo.dirty, repoUrl)
+    val revision = VersionInfo.render(BuildInfo.commitSha, BuildInfo.dirty, repoUrl, BuildInfo.aiProviders)
     val cwd = new File(".")
     val aiConfig = AiConfig.load(cwd)
     val providers: Map[String, Translator] = BuildInfo.aiProviders.map: provider =>

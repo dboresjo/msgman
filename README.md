@@ -152,7 +152,10 @@ repository. If the working tree had uncommitted changes at build time, the
 output is suffixed with `(dirty: built with uncommitted changes)`; if no
 `origin` remote could be read at build time (e.g. a tarball checkout, or a CI
 job with no remote configured), it falls back to printing the bare commit SHA
-with a note that the repository URL is unknown.
+with a note that the repository URL is unknown. If the binary was built with
+AI support (see `--with-ai` below), the linked-in providers are listed in
+brackets after the revision, e.g.
+`https://github.com/dboresjo/msgman/tree/<sha> [claude, openai]`.
 
 `msgman` discovers language files by matching every filename directly inside
 `--path` against `--file-pattern`; the text captured in place of `$1` is that
