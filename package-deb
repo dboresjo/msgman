@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Packages an already-built msgman binary (see install, or `sbt nativeLink`
+# directly) into a Debian package for the host machine's architecture.
+#
+# Usage: package-deb <version>
+#
+# <version> is the package version, e.g. 1.2.3 (no leading "v"). Runtime
+# dependencies (libcurl, libssl/libcrypto) are detected from the binary
+# itself via ldd/dpkg -S, rather than hardcoded, since the exact runtime
+# package names differ across Debian/Ubuntu releases (e.g. libcurl4 vs
+# libcurl4t64) and depend on whether the binary was built with --with-ai
+# (see TRANSLATION.md).
+set -euo pipefail
+
+BINARY_NAME="msgman"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+die() {
+  echo "package-deb: error: $1" >&2
+  exit 1
+}
+
+[ $# -eq 1 ] || die "usage: package-deb <version>"
+VERSION="$1"
+
+command -v dpkg-deb >/dev/null 2>&1 || die "dpkg-deb is required but was not found on PATH."
+command -v dpkg >/dev/null 2>&1 || die "dpkg is required but was not found on PATH."
+command -v ldd >/dev/null 2>&1 || die "ldd is required but was not found on PATH."
+
+case "$(uname -m)" in
+  x86_64)  DEB_ARCH="amd64" ;;
+  aarch64) DEB_ARCH="arm64" ;;
+  *)       die "unsupported architecture: $(uname -m) (expected x86_64 or aarch64)" ;;
+esac
+
+BUILT_BINARIES=()
+while IFS= read -r -d '' f; do
+  BUILT_BINARIES+=("$f")
+done < <(find target -mindepth 2 -maxdepth 2 -type f -name "${BINARY_NAME}" -print0 2>/dev/null)
+[ "${#BUILT_BINARIES[@]}" -gt 0 ] || die "no '${BINARY_NAME}' binary found under target/; run 'sbt nativeLink' first."
+BUILT_BINARY="$(ls -t "${BUILT_BINARIES[@]}" | head -n1)"
+
+# Runtime deps: always libc6, plus whichever of libcurl/libssl/libcrypto the
+# binary actually links against (present when built --with-ai), resolved to
+# the real package that owns each .so on this machine.
+DEPS=("libc6")
+add_dep() {
+  local d="$1" existing
+  for existing in "${DEPS[@]}"; do
+    [ "$existing" = "$d" ] && return
+  done
+  DEPS+=("$d")
+}
+while IFS= read -r solib; do
+  [ -n "$solib" ] || continue
+  pkg="$(dpkg -S "$solib" 2>/dev/null | head -n1 | cut -d: -f1)"
+  [ -n "$pkg" ] && add_dep "$pkg"
+done < <(ldd "$BUILT_BINARY" 2>/dev/null | awk '{print $3}' | grep -E '/(libcurl|libssl|libcrypto)[.-]' || true)
+DEPENDS="$(printf ', %s' "${DEPS[@]}")"
+DEPENDS="${DEPENDS#, }"
+
+PKG_DIR="$(mktemp -d)"
+trap 'rm -rf "$PKG_DIR"' EXIT
+chmod 755 "$PKG_DIR"
+
+install -m 755 -d "${PKG_DIR}/DEBIAN" "${PKG_DIR}/usr" "${PKG_DIR}/usr/bin"
+install -m 755 "${BUILT_BINARY}" "${PKG_DIR}/usr/bin/${BINARY_NAME}"
+
+cat > "${PKG_DIR}/DEBIAN/control" <<EOF
+Package: ${BINARY_NAME}
+Version: ${VERSION}
+Section: utils
+Priority: optional
+Architecture: ${DEB_ARCH}
+Depends: ${DEPENDS}
+Maintainer: dboresjo <noreply@github.com>
+Homepage: https://github.com/dboresjo/msgman
+Description: Canonical sorter for Play Framework messages files
+ msgman sorts Scala Play Framework messages files for multiple languages
+ into a canonical order, reports missing or orphaned translations, and can
+ optionally generate missing translations with an AI service.
+EOF
+
+OUT="${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
+dpkg-deb --root-owner-group --build "${PKG_DIR}" "${OUT}"
+echo "Built ${OUT} (Depends: ${DEPENDS})"

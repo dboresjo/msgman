@@ -71,6 +71,8 @@ changeBusinessName.confirmation.title = ...
 
 ## Install
 
+### From source
+
 Requires a JDK, [sbt](https://www.scala-sbt.org/) and the
 [Scala Native toolchain](https://scala-native.org/en/stable/user/setup.html)
 (a C compiler and LLVM).
@@ -110,12 +112,20 @@ packages on Debian/Ubuntu). The script checks for both up front when
 `--with-ai` is given, and fails with a clear message before attempting a build
 if either is missing.
 
-To build without installing, or to install by hand:
+
+### Debian package
+
+Prebuilt `.deb` packages (amd64 and arm64, built with `--translate` support
+for all three AI providers) are attached to each
+[GitHub release](https://github.com/dboresjo/msgman/releases):
 
 ```
-sbt nativeLink
-cp target/scala-3.3.7/msgman /usr/local/bin/msgman
+sudo apt install ./msgman_<version>_<arch>.deb
 ```
+
+No JDK or Scala Native toolchain is required for this route, only the
+package's own runtime dependencies (libc, and libcurl/libssl for
+`--translate`), which apt resolves automatically.
 
 ## Usage
 
@@ -243,6 +253,13 @@ msgman verify --path app/messages --file-pattern messages_$1.properties
 * `3` AI translation was attempted and failed (network error, rate limit, malformed response, or a placeholder-validation failure).
 
 ## Development
+
+To build without installing, or to install by hand:
+
+```
+sbt nativeLink
+cp target/scala-3.3.7/msgman /usr/local/bin/msgman
+```
 
 Built with [Scala Native](https://scala-native.org/). Tests are written with
 [munit](https://scalameta.org/munit/) and run as a native binary via

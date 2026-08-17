@@ -1,0 +1,119 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    # Built on the oldest still-supported Ubuntu LTS (24.04), not the newest.
+    # Unlike macOS, glibc is backward-compatible: a binary linked against an
+    # older glibc runs fine on a newer one (e.g. 26.04), but not the reverse,
+    # so building on 24.04 covers both without needing a build per version.
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libcurl4-openssl-dev libssl-dev
+      - name: Build (with AI translation support for all providers)
+        run: sbt -no-colors "-Dmsgman.aiProviders=openai,claude,gemini" nativeLink
+      - name: Package .deb
+        run: ./package-deb "${GITHUB_REF_NAME#v}"
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: msgman_*_${{ matrix.arch }}.deb
+
+  build-macos:
+    # Built per macOS version, not just once, since a Scala Native binary
+    # built on a newer macOS is not guaranteed to run on an older one; each
+    # version gets its own tarball so a future Homebrew formula can pick the
+    # right one for the machine it's installing on. All are Apple Silicon
+    # (arm64); GitHub has no Intel image beyond macos-13.
+    strategy:
+      matrix:
+        macos: [ "15", "26" ]
+
+    runs-on: macos-${{ matrix.macos }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+      - name: Install build dependencies
+        run: |
+          # curl's headers ship with the Xcode SDK, but Apple stopped shipping
+          # OpenSSL headers years ago, so it needs to come from Homebrew; its
+          # include/lib dirs aren't on clang's default search path, so they're
+          # exported for the sbt/nativeLink step below.
+          brew install openssl@3
+          echo "CPATH=$(brew --prefix openssl@3)/include" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(brew --prefix openssl@3)/lib" >> "$GITHUB_ENV"
+      - name: Build (with AI translation support for all providers)
+        run: sbt -no-colors "-Dmsgman.aiProviders=openai,claude,gemini" nativeLink
+      - name: Package tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BINARY="$(find target -mindepth 2 -maxdepth 2 -type f -name msgman | xargs ls -t | head -n1)"
+          OUT="msgman_${VERSION}_darwin_arm64_macos${{ matrix.macos }}.tar.gz"
+          tar -czf "$OUT" -C "$(dirname "$BINARY")" msgman
+          echo "Built ${OUT}"
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball-darwin-arm64-macos${{ matrix.macos }}
+          path: msgman_*_darwin_arm64_macos${{ matrix.macos }}.tar.gz
+
+  release:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.deb dist/*.tar.gz \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
