@@ -56,7 +56,7 @@ object MessagesFile:
           throw MessagesFileParseException(s"malformed line (empty key): $trimmed")
 
         val top = Key.topLevel(key)
-        val isBlockStart = previousTop.forall(_ != top)
+        val isBlockStart = !previousTop.contains(top)
         previousTop = Some(top)
 
         if pending.isEmpty then
@@ -80,7 +80,7 @@ object MessagesFile:
     var previousTop: Option[String] = None
     sorted.foreach: entry =>
       val top = Key.topLevel(entry.key)
-      val isNewBlock = previousTop.forall(_ != top)
+      val isNewBlock = !previousTop.contains(top)
       if previousTop.isDefined && isNewBlock then sb.append('\n')
       if isNewBlock then
         file.blockComments.getOrElse(top, Nil).foreach(line => sb.append("# ").append(line).append('\n'))
