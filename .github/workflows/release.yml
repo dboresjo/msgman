@@ -20,6 +20,7 @@ jobs:
     # older glibc runs fine on a newer one (e.g. 26.04), but not the reverse,
     # so building on 24.04 covers both without needing a build per version.
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
@@ -60,6 +61,7 @@ jobs:
     # right one for the machine it's installing on. All are Apple Silicon
     # (arm64); GitHub has no Intel image beyond macos-13.
     strategy:
+      fail-fast: false
       matrix:
         macos: [ "15", "26" ]
 

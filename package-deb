@@ -55,8 +55,21 @@ add_dep() {
 }
 while IFS= read -r solib; do
   [ -n "$solib" ] || continue
-  pkg="$(dpkg -S "$solib" 2>/dev/null | head -n1 | cut -d: -f1)"
-  [ -n "$pkg" ] && add_dep "$pkg"
+  pkg="$(dpkg -S "$solib" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
+  if [ -z "$pkg" ]; then
+    # dpkg doesn't always track a lib's SONAME symlink directly (OpenSSL's
+    # libssl.so.3/libcrypto.so.3 are a known case); retry against what it
+    # actually resolves to before giving up on it.
+    resolved="$(readlink -f "$solib" 2>/dev/null || true)"
+    if [ -n "$resolved" ] && [ "$resolved" != "$solib" ]; then
+      pkg="$(dpkg -S "$resolved" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
+    fi
+  fi
+  if [ -n "$pkg" ]; then
+    add_dep "$pkg"
+  else
+    echo "package-deb: warning: could not determine which package owns ${solib}; it will not be in Depends" >&2
+  fi
 done < <(ldd "$BUILT_BINARY" 2>/dev/null | awk '{print $3}' | grep -E '/(libcurl|libssl|libcrypto)[.-]' || true)
 DEPENDS="$(printf ', %s' "${DEPS[@]}")"
 DEPENDS="${DEPENDS#, }"
