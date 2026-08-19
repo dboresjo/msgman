@@ -93,7 +93,7 @@ jobs:
       - name: Package tarball
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BINARY="$(find target -mindepth 2 -maxdepth 2 -type f -name msgman | xargs ls -t | head -n1)"
+          BINARY="$(find target/out -type f -name msgman | xargs ls -t | head -n1)"
           OUT="msgman_${VERSION}_darwin_arm64_macos${{ matrix.macos }}.tar.gz"
           tar -czf "$OUT" -C "$(dirname "$BINARY")" msgman
           echo "Built ${OUT}"
@@ -145,7 +145,7 @@ jobs:
       - name: Publish and bundle
         run: |
           export MSGMAN_PLUGIN_VERSION="${GITHUB_REF_NAME#v}"
-          sbt -no-colors "plugin/publishSigned" "plugin/sonaBundle"
+          sbt -no-colors "plugin/publishSigned; plugin/sonaBundle"
       - name: Upload bundle to Central Portal
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}

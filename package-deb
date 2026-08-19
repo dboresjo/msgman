@@ -38,7 +38,7 @@ esac
 BUILT_BINARIES=()
 while IFS= read -r -d '' f; do
   BUILT_BINARIES+=("$f")
-done < <(find target -mindepth 2 -maxdepth 2 -type f -name "${BINARY_NAME}" -print0 2>/dev/null)
+done < <(find target/out -type f -name "${BINARY_NAME}" -print0 2>/dev/null)
 [ "${#BUILT_BINARIES[@]}" -gt 0 ] || die "no '${BINARY_NAME}' binary found under target/; run 'sbt nativeLink' first."
 BUILT_BINARY="$(ls -t "${BUILT_BINARIES[@]}" | head -n1)"
 
