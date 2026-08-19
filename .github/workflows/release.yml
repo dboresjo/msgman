@@ -121,3 +121,47 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes
+
+  publish-plugin:
+    # Publishes sbt-msgman (plugin/) to Maven Central via the Central Portal.
+    # Independent of the native CLI's own artifacts (build-linux/build-macos/
+    # release above), so it runs in parallel rather than waiting on them.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17 (sbt 2.x's minimum)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+      - name: Import signing key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.PGP_SECRET }}
+      - name: Publish and bundle
+        run: |
+          export MSGMAN_PLUGIN_VERSION="${GITHUB_REF_NAME#v}"
+          sbt -no-colors "plugin/publishSigned" "plugin/sonaBundle"
+      - name: Upload bundle to Central Portal
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        run: |
+          # sbt 2.0.1's built-in sonaUpload/sonaRelease commands don't register
+          # in this version (confirmed against gitbucket, a real project on sbt
+          # 1.12.15 where they do work; likely a gap specific to early sbt 2.x).
+          # sonaBundle itself works fine, so the upload step is done directly
+          # against the Central Portal's REST API instead. USER_MANAGED means
+          # the deployment still needs manual confirmation on
+          # central.sonatype.com before it actually goes live on Central; switch
+          # to AUTOMATIC once confident in this pipeline.
+          TOKEN="$(printf '%s:%s' "$SONATYPE_USERNAME" "$SONATYPE_PASSWORD" | base64 -w0)"
+          curl --fail --request POST \
+            --header "Authorization: Bearer ${TOKEN}" \
+            --form bundle=@target/sona-bundle/bundle.zip \
+            --form publishingType=USER_MANAGED \
+            https://central.sonatype.com/api/v1/publisher/upload

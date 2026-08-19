@@ -19,6 +19,12 @@ val aiProviders: Seq[String] = {
 }
 val sttpAiVersion = "0.8.0"
 
+// sbtPlugin projects default to a legacy Ivy-style publish, which never
+// registers sbt's built-in sonaUpload/sonaRelease commands (Central Portal is
+// Maven-only). This must be ThisBuild-scoped: command registration reads it
+// before any single project's settings are in scope.
+ThisBuild / sbtPluginPublishLegacyMavenStyle := false
+
 lazy val root = (project in file("."))
   .enablePlugins(ScalaNativePlugin)
   // Fans out `test`/`compile` etc. to the plugin project too, so a bare `sbt
@@ -108,7 +114,11 @@ lazy val root = (project in file("."))
       "-deprecation",
       "-feature",
       "-unchecked"
-    )
+    ),
+    // The CLI is a Scala Native binary, not a JVM library, and must never be
+    // pushed to Maven Central; only plugin/ (sbt-msgman) is published there.
+    publish / skip := true,
+    publishArtifact := false
   )
 
 // Distributes the same format/verify logic as an sbt plugin (sbt-msgman), for
@@ -121,7 +131,12 @@ lazy val plugin = (project in file("plugin"))
   .settings(
     organization := "io.github.dboresjo",
     name := "sbt-msgman",
-    version := "0.1.0",
+    // Overridden from the pushed tag by the publish-plugin CI job (see
+    // release.yml), the same way the CLI's own version comes from
+    // GITHUB_REF_NAME rather than this hardcoded fallback; this default is
+    // only ever seen locally (publishLocal, sbt shell), never in a real
+    // Central Portal publish.
+    version := sys.env.getOrElse("MSGMAN_PLUGIN_VERSION", "0.1.0"),
     // Must match the Scala version sbt 2.0.1 itself is built with, not core's own
     // 3.3.7: plugin classes are loaded straight into sbt's running process/TASTy
     // reader, the same reason an sbt 1.x plugin has to be exactly Scala 2.12.
@@ -131,6 +146,33 @@ lazy val plugin = (project in file("plugin"))
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "test" / "scala",
     libraryDependencies += "org.scalameta" %% "munit" % "1.3.5" % Test,
     testFrameworks += new TestFramework("munit.Framework"),
+    // Central Portal publish metadata (io.github.dboresjo namespace, verified via
+    // GitHub OAuth). See https://www.scala-sbt.org/2.x/docs/en/recipes/central.html.
+    organizationName := "dboresjo",
+    organizationHomepage := Some(url("https://github.com/dboresjo")),
+    scmInfo := Some(
+      ScmInfo(url("https://github.com/dboresjo/msgman"), "scm:git@github.com:dboresjo/msgman.git")
+    ),
+    developers := List(
+      Developer(
+        id = "dboresjo",
+        name = "Dan Boresjö",
+        email = "6451217+dboresjo@users.noreply.github.com",
+        url = url("https://github.com/dboresjo")
+      )
+    ),
+    description := "sbt plugin distributing msgman's format/verify tasks as in-process build tasks, " +
+      "for projects that would rather not install the msgman CLI separately.",
+    licenses := List(License.Apache2),
+    homepage := Some(url("https://github.com/dboresjo/msgman")),
+    versionScheme := Some("early-semver"),
+    pomIncludeRepository := { _ => false },
+    publishMavenStyle := true,
+    publishTo := {
+      val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+      if version.value.endsWith("-SNAPSHOT") then Some("central-snapshots" at centralSnapshots)
+      else localStaging.value
+    },
     // MsgmanPlugin's own Def.task wiring can't be exercised without a live sbt
     // task-graph harness, the same reasoning that excludes root's Main; the
     // pure argument-building/exit-code logic it calls into (MsgmanTasks) is not
