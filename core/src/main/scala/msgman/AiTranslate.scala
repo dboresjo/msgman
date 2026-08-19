@@ -16,7 +16,7 @@ final case class TranslateResult(entries: List[Entry], stillMissing: List[(Strin
   * per key for any block whose batched response fails validation. See "Cost
   * and latency" and "Translation safety" in TRANSLATION.md.
   */
-object AiTranslate:
+object AiTranslate {
 
   /** Groups `keys` (assumed already known missing) by top-level key, both the
     * blocks and the keys within each block in canonical key order.
@@ -51,17 +51,19 @@ object AiTranslate:
       targets: List[TranslationTarget],
       model: String,
       log: String => Unit
-  ): Either[RequestFailure, Map[String, String]] =
+  ): Either[RequestFailure, Map[String, String]] = {
     val keyList = targets.map(t => displayKey(context.topLevelKey, t.subKey)).mkString(", ")
     log(s"[${context.targetLanguageCode}] requesting translation of ${context.topLevelKey} ($keyList) from $model")
-    val result = translator.translateBlock(TranslationRequest(context, targets, model)) match
+    val result = translator.translateBlock(TranslationRequest(context, targets, model)) match {
       case TranslationOutcome.Failure(reason, fatal) => Left(RequestFailure(reason, fatal))
       case TranslationOutcome.Success(response) =>
-        val validated = targets.map: t =>
+        val validated = targets.map { t =>
           response.translations.get(t.subKey).filter(TranslationSafety.tokensMatch(t.masterText, _)).map(t.subKey -> _)
-        if validated.forall(_.isDefined) then Right(validated.flatten.toMap)
+        }
+        if (validated.forall(_.isDefined)) Right(validated.flatten.toMap)
         else Left(RequestFailure("response did not include a valid translation for every key", fatal = false))
-    result match
+    }
+    result match {
       case Right(translations) =>
         val summary = translations.toList
           .sortBy(_._1)(Key.ordering)
@@ -70,17 +72,20 @@ object AiTranslate:
         log(s"[${context.targetLanguageCode}] received translation of ${context.topLevelKey}: $summary")
       case Left(RequestFailure(reason, _)) =>
         log(s"[${context.targetLanguageCode}] translation of ${context.topLevelKey} failed: $reason")
+    }
     result
+  }
 
-  private final case class Acc(entries: List[Entry], stillMissing: List[(String, String)], fatal: Option[String]):
+  private final case class Acc(entries: List[Entry], stillMissing: List[(String, String)], fatal: Option[String]) {
     def isDone: Boolean = fatal.isDefined
     def withSuccess(key: String, text: String, stealth: Boolean, model: String): Acc =
-      copy(entries = entries :+ Entry(key, text, if stealth then Nil else List(s"added by msgman using $model")))
+      copy(entries = entries :+ Entry(key, text, if (stealth) Nil else List(s"added by msgman using $model")))
     def withMissing(key: String, reason: String): Acc = copy(stillMissing = stillMissing :+ (key -> reason))
     // Discards whatever was accumulated so far: a fatal failure means the whole
     // attempt is treated as failed, not a confusing partial mix of "translated",
     // "missing" and "the run was actually broken".
     def withFatal(reason: String): Acc = Acc(Nil, Nil, Some(reason))
+  }
 
   /** Translates every key of `target` (for `targetCode`) that
     * `findMissingForTranslation` reports as missing. Returns the new entries
@@ -101,32 +106,40 @@ object AiTranslate:
       masterCode: String,
       targetCode: String,
       log: String => Unit = _ => ()
-  ): TranslateResult =
+  ): TranslateResult = {
     val masterValues = master.entries.map(e => e.key -> e.value).toMap
     val missingKeys = Translations.findMissingForTranslation(master, Map(targetCode -> target)).map(_.key)
     val blocks = groupByBlock(missingKeys)
 
-    val result = blocks.foldLeft(Acc(Nil, Nil, None)): (acc, block) =>
-      if acc.isDone then acc
-      else
+    val result = blocks.foldLeft(Acc(Nil, Nil, None)) { (acc, block) =>
+      if (acc.isDone) acc
+      else {
         val (topLevelKey, keys) = block
         val context = TranslationContext.build(cwd, config, master, target, topLevelKey, keys.toSet, masterCode, targetCode)
         val targets = keys.map(k => TranslationTarget(k, masterValues(k)))
         // callAndValidate only ever returns Right once every requested target has
         // validated successfully, so `translations`/`single` below are guaranteed
         // to contain every key being looked up; direct map access is safe.
-        callAndValidate(translator, context, targets, model, log) match
+        callAndValidate(translator, context, targets, model, log) match {
           case Right(translations) =>
-            keys.foldLeft(acc): (a, k) =>
+            keys.foldLeft(acc) { (a, k) =>
               a.withSuccess(k, translations(k), stealth, model)
+            }
           case Left(RequestFailure(reason, true)) => acc.withFatal(reason)
           case Left(RequestFailure(blockReason, false)) =>
-            keys.foldLeft(acc): (a, k) =>
-              if a.isDone then a
+            keys.foldLeft(acc) { (a, k) =>
+              if (a.isDone) a
               else
-                callAndValidate(translator, context, List(TranslationTarget(k, masterValues(k))), model, log) match
+                callAndValidate(translator, context, List(TranslationTarget(k, masterValues(k))), model, log) match {
                   case Right(single)                       => a.withSuccess(k, single(k), stealth, model)
                   case Left(RequestFailure(reason, true))  => a.withFatal(reason)
                   case Left(RequestFailure(reason, false)) => a.withMissing(k, reason)
+                }
+            }
+        }
+      }
+    }
 
     TranslateResult(result.entries, result.stillMissing, result.fatal)
+  }
+}

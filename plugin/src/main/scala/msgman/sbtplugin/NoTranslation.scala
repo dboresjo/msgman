@@ -6,5 +6,6 @@ package msgman.sbtplugin
   * its own file, excluded from coverage, rather than pulling the whole of
   * `MsgmanTasks` out of coverage for one parameter that can never run.
   */
-object NoTranslation:
+object NoTranslation {
   val env: String => Option[String] = _ => None
+}

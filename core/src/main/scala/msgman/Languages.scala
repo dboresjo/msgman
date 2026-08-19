@@ -5,7 +5,7 @@ package msgman
   * code for anything not listed here, rather than failing the translation
   * over a missing display name.
   */
-object Languages:
+object Languages {
 
   private val names: Map[String, String] = Map(
     "en" -> "English",
@@ -38,3 +38,4 @@ object Languages:
   )
 
   def name(code: String): String = names.getOrElse(code, code)
+}

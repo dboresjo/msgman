@@ -1,6 +1,6 @@
 package msgman
 
-object Translations:
+object Translations {
 
   final case class Missing(languageCode: String, key: String)
   final case class Extra(languageCode: String, key: String)
@@ -23,17 +23,21 @@ object Translations:
     * translation) from each of `others`. Results are ordered by language
     * code, then by canonical key order.
     */
-  def findMissing(master: MessagesFile, others: Map[String, MessagesFile], strict: Boolean): List[Missing] =
+  def findMissing(master: MessagesFile, others: Map[String, MessagesFile], strict: Boolean): List[Missing] = {
     val masterKeys = master.entries.map(_.key).sorted(Key.ordering)
-    others.toList.sortBy(_._1).flatMap:
+    others.toList.sortBy(_._1).flatMap {
       case (code, file) =>
         val entriesByKey = file.entries.map(e => e.key -> e).toMap
-        masterKeys.flatMap: key =>
-          entriesByKey.get(key) match
+        masterKeys.flatMap { key =>
+          entriesByKey.get(key) match {
             case None                                                => Some(Missing(code, key))
             case Some(entry) if strict && isPlaceholder(entry.value) => Some(Missing(code, key))
             case Some(entry) if strict && isAiGenerated(entry)       => Some(Missing(code, key))
             case _                                                   => None
+          }
+        }
+    }
+  }
 
   /** Keys that `--translate` should attempt to translate: absent from a
     * translation file entirely, or present only as an untranslated
@@ -43,22 +47,29 @@ object Translations:
     * never re-translates a key it already translated, see "Determinism" in
     * TRANSLATION.md.
     */
-  def findMissingForTranslation(master: MessagesFile, others: Map[String, MessagesFile]): List[Missing] =
+  def findMissingForTranslation(master: MessagesFile, others: Map[String, MessagesFile]): List[Missing] = {
     val masterKeys = master.entries.map(_.key).sorted(Key.ordering)
-    others.toList.sortBy(_._1).flatMap:
+    others.toList.sortBy(_._1).flatMap {
       case (code, file) =>
         val entriesByKey = file.entries.map(e => e.key -> e).toMap
-        masterKeys.flatMap: key =>
-          entriesByKey.get(key) match
-            case None                                                                => Some(Missing(code, key))
-            case Some(entry) if isPlaceholder(entry.value) && !isAiGenerated(entry)   => Some(Missing(code, key))
-            case _                                                                    => None
+        masterKeys.flatMap { key =>
+          entriesByKey.get(key) match {
+            case None                                                              => Some(Missing(code, key))
+            case Some(entry) if isPlaceholder(entry.value) && !isAiGenerated(entry) => Some(Missing(code, key))
+            case _                                                                  => None
+          }
+        }
+    }
+  }
 
   /** Keys present in one of `others` but absent from `master` altogether,
     * ordered by language code, then by canonical key order.
     */
-  def findExtra(master: MessagesFile, others: Map[String, MessagesFile]): List[Extra] =
+  def findExtra(master: MessagesFile, others: Map[String, MessagesFile]): List[Extra] = {
     val masterKeys = master.entries.map(_.key).toSet
-    others.toList.sortBy(_._1).flatMap:
+    others.toList.sortBy(_._1).flatMap {
       case (code, file) =>
         file.entries.map(_.key).filterNot(masterKeys.contains).sorted(Key.ordering).map(key => Extra(code, key))
+    }
+  }
+}

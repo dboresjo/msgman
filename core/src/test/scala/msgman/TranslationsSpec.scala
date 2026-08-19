@@ -1,81 +1,99 @@
 package msgman
 
-class TranslationsSpec extends munit.FunSuite:
+class TranslationsSpec extends munit.FunSuite {
 
-  test("isPlaceholder recognises a two-letter language code prefix"):
+  test("isPlaceholder recognises a two-letter language code prefix") {
     assert(Translations.isPlaceholder("en: Some text"))
 
-  test("isPlaceholder recognises a three-letter language code prefix"):
+  }
+  test("isPlaceholder recognises a three-letter language code prefix") {
     assert(Translations.isPlaceholder("cym: Some text"))
 
-  test("isPlaceholder rejects ordinary text"):
+  }
+  test("isPlaceholder rejects ordinary text") {
     assert(!Translations.isPlaceholder("Some text"))
 
-  test("isPlaceholder requires the colon to be followed by whitespace"):
+  }
+  test("isPlaceholder requires the colon to be followed by whitespace") {
     assert(!Translations.isPlaceholder("en:Some text"))
 
-  test("isPlaceholder only matches at the start of the value"):
+  }
+  test("isPlaceholder only matches at the start of the value") {
     assert(!Translations.isPlaceholder("Some en: text"))
 
+  }
   private val master = MessagesFile(List(Entry("site.back", "Back"), Entry("site.change", "Change")))
 
-  test("findMissing reports a key entirely absent from another language file"):
+  test("findMissing reports a key entirely absent from another language file") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol")))
     val missing = Translations.findMissing(master, Map("cy" -> cy), strict = false)
     assertEquals(missing, List(Translations.Missing("cy", "site.change")))
 
-  test("findMissing reports nothing when every key is translated"):
+  }
+  test("findMissing reports nothing when every key is translated") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.change", "Newid")))
     assertEquals(Translations.findMissing(master, Map("cy" -> cy), strict = false), Nil)
 
-  test("findMissing does not flag a placeholder value when not strict"):
+  }
+  test("findMissing does not flag a placeholder value when not strict") {
     val cy = MessagesFile(List(Entry("site.back", "en: Back"), Entry("site.change", "Newid")))
     assertEquals(Translations.findMissing(master, Map("cy" -> cy), strict = false), Nil)
 
-  test("findMissing in strict mode also flags placeholder values as missing"):
+  }
+  test("findMissing in strict mode also flags placeholder values as missing") {
     val cy = MessagesFile(List(Entry("site.back", "en: Back"), Entry("site.change", "Newid")))
     assertEquals(
       Translations.findMissing(master, Map("cy" -> cy), strict = true),
       List(Translations.Missing("cy", "site.back"))
     )
 
-  test("findMissing in strict mode flags an AI-generated value as missing"):
+  }
+  test("findMissing in strict mode flags an AI-generated value as missing") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol", List("added by msgman using claude-sonnet-5")), Entry("site.change", "Newid")))
     assertEquals(
       Translations.findMissing(master, Map("cy" -> cy), strict = true),
       List(Translations.Missing("cy", "site.back"))
     )
 
-  test("findMissing without strict does not flag an AI-generated value as missing"):
+  }
+  test("findMissing without strict does not flag an AI-generated value as missing") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol", List("added by msgman using claude-sonnet-5")), Entry("site.change", "Newid")))
     assertEquals(Translations.findMissing(master, Map("cy" -> cy), strict = false), Nil)
 
-  test("isAiGenerated recognises the added-by-msgman comment"):
+  }
+  test("isAiGenerated recognises the added-by-msgman comment") {
     assert(Translations.isAiGenerated(Entry("site.back", "Yn ol", List("added by msgman using claude-sonnet-5"))))
 
-  test("isAiGenerated is false for an ordinary line comment"):
+  }
+  test("isAiGenerated is false for an ordinary line comment") {
     assert(!Translations.isAiGenerated(Entry("site.back", "Yn ol", List("some other comment"))))
 
-  test("isAiGenerated is false with no comments"):
+  }
+  test("isAiGenerated is false with no comments") {
     assert(!Translations.isAiGenerated(Entry("site.back", "Yn ol")))
 
-  test("findMissingForTranslation reports a key entirely absent"):
+  }
+  test("findMissingForTranslation reports a key entirely absent") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol")))
     assertEquals(Translations.findMissingForTranslation(master, Map("cy" -> cy)), List(Translations.Missing("cy", "site.change")))
 
-  test("findMissingForTranslation reports a placeholder value left by --fix"):
+  }
+  test("findMissingForTranslation reports a placeholder value left by --fix") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.change", "cy: Change")))
     assertEquals(Translations.findMissingForTranslation(master, Map("cy" -> cy)), List(Translations.Missing("cy", "site.change")))
 
-  test("findMissingForTranslation leaves an AI-generated value alone"):
+  }
+  test("findMissingForTranslation leaves an AI-generated value alone") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.change", "Newid", List("added by msgman using claude-sonnet-5"))))
     assertEquals(Translations.findMissingForTranslation(master, Map("cy" -> cy)), Nil)
 
-  test("findMissingForTranslation reports nothing when every key is translated"):
+  }
+  test("findMissingForTranslation reports nothing when every key is translated") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.change", "Newid")))
     assertEquals(Translations.findMissingForTranslation(master, Map("cy" -> cy)), Nil)
 
-  test("findMissingForTranslation orders results by language code then by canonical key order"):
+  }
+  test("findMissingForTranslation orders results by language code then by canonical key order") {
     val cy = MessagesFile(Nil)
     val fr = MessagesFile(Nil)
     assertEquals(
@@ -88,7 +106,8 @@ class TranslationsSpec extends munit.FunSuite:
       )
     )
 
-  test("findMissing orders results by language code then by canonical key order"):
+  }
+  test("findMissing orders results by language code then by canonical key order") {
     val cy = MessagesFile(Nil)
     val fr = MessagesFile(Nil)
     val missing = Translations.findMissing(master, Map("fr" -> fr, "cy" -> cy), strict = false)
@@ -102,15 +121,18 @@ class TranslationsSpec extends munit.FunSuite:
       )
     )
 
-  test("findExtra reports a key present in a translation but absent from the master"):
+  }
+  test("findExtra reports a key present in a translation but absent from the master") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol"), Entry("site.orphan", "Rhywbeth")))
     assertEquals(Translations.findExtra(master, Map("cy" -> cy)), List(Translations.Extra("cy", "site.orphan")))
 
-  test("findExtra reports nothing when every key exists in the master"):
+  }
+  test("findExtra reports nothing when every key exists in the master") {
     val cy = MessagesFile(List(Entry("site.back", "Yn ol")))
     assertEquals(Translations.findExtra(master, Map("cy" -> cy)), Nil)
 
-  test("findExtra orders results by language code then by canonical key order"):
+  }
+  test("findExtra orders results by language code then by canonical key order") {
     val cy = MessagesFile(List(Entry("zzz.orphan", "a"), Entry("aaa.orphan", "b")))
     val fr = MessagesFile(List(Entry("fr.orphan", "c")))
     assertEquals(
@@ -121,3 +143,5 @@ class TranslationsSpec extends munit.FunSuite:
         Translations.Extra("fr", "fr.orphan")
       )
     )
+  }
+}

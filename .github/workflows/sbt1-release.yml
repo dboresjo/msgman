@@ -1,0 +1,65 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+#
+# Publishes the frozen sbt-1.x build of sbt-msgman (see this branch's own
+# history for why it's frozen: a one-time snapshot, not kept in sync with the
+# mainline's sbt-2.x plugin going forward). Triggered on a distinctly
+# namespaced tag pattern (sbt1-v*) so it can never collide with the mainline's
+# ordinary v* release tags.
+
+name: sbt1 plugin release
+
+on:
+  push:
+    tags:
+      - 'sbt1-v*'
+
+jobs:
+  publish-plugin:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+      - name: Import signing key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.PGP_SECRET }}
+      - name: Sign and stage
+        run: |
+          export MSGMAN_PLUGIN_VERSION="${GITHUB_REF_NAME#sbt1-v}"
+          sbt -no-colors "plugin/publishSigned"
+      - name: Bundle for Central Portal
+        run: |
+          # Unlike the mainline's sbt-2.x build, sbt 1.12.0 has no built-in
+          # sonaBundle/sonaUpload/sonaRelease commands at all (confirmed
+          # empirically: none of the three register). publishSigned's own
+          # localStaging output already contains every file and checksum
+          # Central Portal's bundle format needs (each of jar/sources-jar/
+          # javadoc-jar/pom, plus .asc/.md5/.sha1 for each, i.e. the same
+          # 29-entry layout the mainline's sonaBundle produces, verified by
+          # direct comparison), so bundling here is just zipping that tree as-is.
+          mkdir -p target/sona-bundle
+          (cd target/sona-staging && zip -r ../sona-bundle/bundle.zip io)
+      - name: Upload bundle to Central Portal
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        run: |
+          # USER_MANAGED: the deployment needs a manual confirm on
+          # central.sonatype.com before it goes live, same as the mainline.
+          TOKEN="$(printf '%s:%s' "$SONATYPE_USERNAME" "$SONATYPE_PASSWORD" | base64 -w0)"
+          curl --fail --request POST \
+            --header "Authorization: Bearer ${TOKEN}" \
+            --form bundle=@target/sona-bundle/bundle.zip \
+            --form publishingType=USER_MANAGED \
+            https://central.sonatype.com/api/v1/publisher/upload

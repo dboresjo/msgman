@@ -5,7 +5,7 @@ package msgman
   * TRANSLATION.md. HTML markup is not validated here, unlike placeholder
   * tokens it has no fixed, easily-comparable form.
   */
-object TranslationSafety:
+object TranslationSafety {
 
   private val tokenPattern = "\\{\\d+\\}|''".r
 
@@ -16,3 +16,4 @@ object TranslationSafety:
     */
   def tokensMatch(source: String, translated: String): Boolean =
     tokens(source).sorted == tokens(translated).sorted
+}

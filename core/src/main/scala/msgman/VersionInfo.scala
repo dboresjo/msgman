@@ -7,7 +7,7 @@ package msgman
   * also comes from `BuildInfo`; it lists the AI providers linked into this
   * binary via `--with-ai`, and is empty when the binary has no AI support.
   */
-object VersionInfo:
+object VersionInfo {
 
   private val sshRemote = "^(?:ssh://)?git@([^:/]+)[:/](.+?)(?:\\.git)?/?$".r
   private val httpRemote = "^https?://(?:[^@/]+@)?([^/]+)/(.+?)(?:\\.git)?/?$".r
@@ -20,19 +20,23 @@ object VersionInfo:
     * repo. Returns `None` if the remote isn't in a recognised form.
     */
   def parseRemoteUrl(remote: String): Option[String] =
-    remote.trim match
+    remote.trim match {
       case sshRemote(host, path)  => Some(s"https://$host/$path")
       case httpRemote(host, path) => Some(s"https://$host/$path")
       case _                      => None
+    }
 
-  def render(commitSha: String, dirty: Boolean, repoUrl: Option[String], aiProviders: List[String] = Nil): String =
+  def render(commitSha: String, dirty: Boolean, repoUrl: Option[String], aiProviders: List[String] = Nil): String = {
     val notes = List(
-      if dirty then Some("dirty: built with uncommitted changes") else None,
-      if repoUrl.isEmpty then Some("repository URL unknown: no git remote found at build time") else None
+      if (dirty) Some("dirty: built with uncommitted changes") else None,
+      if (repoUrl.isEmpty) Some("repository URL unknown: no git remote found at build time") else None
     ).flatten
-    val suffix = if notes.isEmpty then "" else s" (${notes.mkString("; ")})"
-    val base = repoUrl match
+    val suffix = if (notes.isEmpty) "" else s" (${notes.mkString("; ")})"
+    val base = repoUrl match {
       case Some(url) => s"$url/tree/$commitSha"
       case None      => s"commit $commitSha"
-    val providers = if aiProviders.isEmpty then "" else s" [${aiProviders.sorted.mkString(", ")}]"
+    }
+    val providers = if (aiProviders.isEmpty) "" else s" [${aiProviders.sorted.mkString(", ")}]"
     s"$base$providers$suffix\n"
+  }
+}

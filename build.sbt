@@ -19,12 +19,6 @@ val aiProviders: Seq[String] = {
 }
 val sttpAiVersion = "0.8.0"
 
-// sbtPlugin projects default to a legacy Ivy-style publish, which never
-// registers sbt's built-in sonaUpload/sonaRelease commands (Central Portal is
-// Maven-only). This must be ThisBuild-scoped: command registration reads it
-// before any single project's settings are in scope.
-ThisBuild / sbtPluginPublishLegacyMavenStyle := false
-
 lazy val root = (project in file("."))
   .enablePlugins(ScalaNativePlugin)
   // Fans out `test`/`compile` etc. to the plugin project too, so a bare `sbt
@@ -123,24 +117,23 @@ lazy val root = (project in file("."))
 
 // Distributes the same format/verify logic as an sbt plugin (sbt-msgman), for
 // projects that would rather run it as a build task than install the CLI
-// separately. sbt 2.x only: sbt 1.x plugins must be Scala 2.12 (sbt 1.x itself
-// runs on it), which would force core's Scala 3 syntax to be rewritten to a
-// dialect compatible with both; sbt 2.x plugins are Scala 3, so this project
-// compiles core's sources unchanged instead of duplicating or downgrading them.
+// separately. This is the frozen sbt-1.x snapshot: core/'s syntax was rewritten
+// to a dialect valid under both Scala 2.12 and 3.3.7 so it could be shared
+// unchanged with the mainline's sbt-2.x plugin build (see the branch's own
+// history for that rewrite); this branch is not intended to be merged back.
 lazy val plugin = (project in file("plugin"))
   .settings(
     organization := "io.github.dboresjo",
     name := "sbt-msgman",
     // Overridden from the pushed tag by the publish-plugin CI job (see
-    // release.yml), the same way the CLI's own version comes from
+    // sbt1-release.yml), the same way the CLI's own version comes from
     // GITHUB_REF_NAME rather than this hardcoded fallback; this default is
     // only ever seen locally (publishLocal, sbt shell), never in a real
     // Central Portal publish.
     version := sys.env.getOrElse("MSGMAN_PLUGIN_VERSION", "0.1.0"),
-    // Must match the Scala version sbt 2.0.1 itself is built with, not core's own
-    // 3.3.7: plugin classes are loaded straight into sbt's running process/TASTy
-    // reader, the same reason an sbt 1.x plugin has to be exactly Scala 2.12.
-    scalaVersion := "3.8.4",
+    // Must match the Scala version sbt 1.x itself runs on: plugin classes are
+    // loaded straight into sbt's own running JVM process/classloader.
+    scalaVersion := "2.12.20",
     sbtPlugin := true,
     Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "main" / "scala",
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "test" / "scala",
@@ -170,7 +163,7 @@ lazy val plugin = (project in file("plugin"))
     publishMavenStyle := true,
     publishTo := {
       val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
-      if version.value.endsWith("-SNAPSHOT") then Some("central-snapshots" at centralSnapshots)
+      if (version.value.endsWith("-SNAPSHOT")) Some("central-snapshots" at centralSnapshots)
       else localStaging.value
     },
     // MsgmanPlugin's own Def.task wiring can't be exercised without a live sbt

@@ -8,7 +8,7 @@ import msgman.{ExitCode, Runner}
   * directly rather than needing a live sbt task-graph harness (the same
   * reasoning that keeps `Main` untested on the CLI side).
   */
-object MsgmanTasks:
+object MsgmanTasks {
 
   /** Thrown by `runOrThrow` when the underlying `msgman` run fails, so the
     * owning sbt task fails with a clear, single-line message rather than a
@@ -30,7 +30,7 @@ object MsgmanTasks:
       filePattern: Option[String],
       priorityKeys: List[String],
       require: List[String]
-  ): Array[String] =
+  ): Array[String] = {
     val args = List.newBuilder[String]
     args += command
     master.foreach { m =>
@@ -42,18 +42,23 @@ object MsgmanTasks:
     filePattern.foreach { fp =>
       args += "--file-pattern"; args += fp
     }
-    if priorityKeys.nonEmpty then
+    if (priorityKeys.nonEmpty) {
       args += "--priority-keys"; args += priorityKeys.mkString(",")
-    if require.nonEmpty then
+    }
+    if (require.nonEmpty) {
       args += "--require"; args += require.mkString(",")
+    }
     args.result().toArray
+  }
 
   /** Runs `msgman` in-process against `cwd` and throws `MsgmanTaskFailed` if it
     * doesn't exit successfully. `--translate` is not supported: the plugin
     * always runs with no AI providers linked in, the same as a CLI binary
     * built without `--with-ai`.
     */
-  def runOrThrow(args: Array[String], cwd: File, revision: String): Unit =
+  def runOrThrow(args: Array[String], cwd: File, revision: String): Unit = {
     val exitCode = Runner.run(args, cwd, System.out, System.err, revision, env = NoTranslation.env)
-    if exitCode != ExitCode.Success then
+    if (exitCode != ExitCode.Success)
       throw MsgmanTaskFailed(s"msgman ${args.headOption.getOrElse("")} failed (exit code $exitCode)")
+  }
+}

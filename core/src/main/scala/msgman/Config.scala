@@ -17,7 +17,7 @@ final case class Config(
     translationContext: Option[String] = None
 )
 
-object Config:
+object Config {
 
   private val blank = "^\\s*(#.*)?$".r
   private val keyValue = "^([^=\\s][^=]*?)\\s*=\\s*(.*)$".r
@@ -29,13 +29,15 @@ object Config:
     * hand-edited and unlikely to be validated up front like a messages file.
     */
   def parseFile(content: String): Map[String, String] =
-    content.linesIterator.foldLeft(Map.empty[String, String]): (acc, rawLine) =>
+    scala.io.Source.fromString(content).getLines().foldLeft(Map.empty[String, String]) { (acc, rawLine) =>
       val trimmed = rawLine.trim
-      if blank.pattern.matcher(trimmed).matches() then acc
+      if (blank.pattern.matcher(trimmed).matches()) acc
       else
-        trimmed match
+        trimmed match {
           case keyValue(k, v) => acc + (k.trim -> v.trim)
           case _              => acc
+        }
+    }
 
   /** Merges parsed config files, most local taking priority per key. `files`
     * must be ordered most local first, matching the search order in
@@ -44,7 +46,7 @@ object Config:
   def merge(files: List[Map[String, String]]): Map[String, String] =
     files.foldRight(Map.empty[String, String])((local, acc) => acc ++ local)
 
-  def fromSettings(settings: Map[String, String]): Config =
+  def fromSettings(settings: Map[String, String]): Config = {
     val perProvider = settings.toList.collect { case (perProviderKey(provider, field), value) => (provider, field, value) }
     Config(
       provider = settings.get("provider"),
@@ -53,6 +55,7 @@ object Config:
       stealth = settings.get("stealth").contains("true"),
       translationContext = settings.get("translation-context")
     )
+  }
 
   /** Reads and merges the three config file locations, most local first,
     * matching the search order in TRANSLATION.md. A location that doesn't
@@ -60,10 +63,11 @@ object Config:
     * map, shared by any feature configurable through that file (e.g.
     * `priority-keys`, read directly by `Runner`).
     */
-  def loadSettings(cwd: File, home: File, etc: File): Map[String, String] =
+  def loadSettings(cwd: File, home: File, etc: File): Map[String, String] = {
     val locations = List(new File(cwd, ".msgman"), new File(home, ".msgman"), new File(etc, "msgman"))
     val parsed = locations.filter(_.isFile).map(f => parseFile(readFile(f)))
     merge(parsed)
+  }
 
   def load(cwd: File, home: File, etc: File): Config = fromSettings(loadSettings(cwd, home, etc))
 
@@ -73,22 +77,25 @@ object Config:
   def load(cwd: File): Config =
     load(cwd, new File(System.getProperty("user.home")), new File("/etc"))
 
-  private def readFile(file: File): String =
+  private def readFile(file: File): String = {
     val source = scala.io.Source.fromFile(file, "UTF-8")
     try source.mkString
     finally source.close()
+  }
 
   /** The environment variable each provider's sttp-ai client reads its API
     * key from by default (its own `fromEnv` convention), see TRANSLATION.md.
     */
-  def apiKeyEnvVar(provider: String): String = provider match
+  def apiKeyEnvVar(provider: String): String = provider match {
     case "openai" => "OPENAI_KEY"
     case "claude"  => "ANTHROPIC_API_KEY"
     case "gemini"  => "GEMINI_API_KEY"
-    case other     => throw IllegalArgumentException(s"unknown AI provider: $other")
+    case other     => throw new IllegalArgumentException(s"unknown AI provider: $other")
+  }
 
   /** The API key to use for `provider`: its own environment variable if set,
     * otherwise the configured fallback key, otherwise none.
     */
   def resolveApiKey(provider: String, config: Config, env: String => Option[String]): Option[String] =
     env(apiKeyEnvVar(provider)).filter(_.nonEmpty).orElse(config.fallbackKey.get(provider))
+}

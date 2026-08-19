@@ -7,9 +7,9 @@ package msgman
   * dependency so it can be fully unit tested, unlike the concrete provider
   * adapters that call the real API, see "Test coverage" in TRANSLATION.md.
   */
-object AiProtocol:
+object AiProtocol {
 
-  def buildPrompt(request: TranslationRequest): String =
+  def buildPrompt(request: TranslationRequest): String = {
     val ctx = request.context
     val sb = new StringBuilder
     sb.append(s"Translate Play Framework messages file text from ${ctx.masterLanguageName} (${ctx.masterLanguageCode}) ")
@@ -18,17 +18,21 @@ object AiProtocol:
     ctx.projectDescription.foreach(d => sb.append(s"Description: $d\n"))
     ctx.translationContext.foreach(c => sb.append(s"Context:\n$c\n"))
     sb.append(s"Message block: ${ctx.topLevelKey}\n")
-    if ctx.siblingKeys.nonEmpty then
+    if (ctx.siblingKeys.nonEmpty) {
       sb.append("Other keys already in this block, for context:\n")
-      ctx.siblingKeys.foreach: s =>
+      ctx.siblingKeys.foreach { s =>
         sb.append(s"  ${s.subKey} (${ctx.masterLanguageCode}) = ${s.masterText}\n")
         s.targetText.foreach(t => sb.append(s"  ${s.subKey} (${ctx.targetLanguageCode}) = $t\n"))
+      }
+    }
     sb.append("Preserve any {0}, {1}, ... placeholders and '' escaped quotes exactly, and any HTML markup verbatim.\n")
     sb.append("Reply with exactly one line per key below, in the form 'key = translated text', nothing else.\n")
     request.targets.foreach(t => sb.append(s"${t.subKey} (${ctx.masterLanguageCode}) = ${t.masterText}\n"))
     sb.toString
+  }
 
   /** Parses an AI reply of `key = translated text` lines into a sub-key to
     * translation map. Reuses the same flat grammar as `.msgman`.
     */
   def parseResponse(text: String): Map[String, String] = Config.parseFile(text)
+}

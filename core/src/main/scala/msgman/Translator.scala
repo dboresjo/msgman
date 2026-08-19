@@ -36,8 +36,10 @@ final case class TranslationRequest(context: BlockContext, targets: List[Transla
   */
 final case class TranslationResponse(translations: Map[String, String])
 
-enum TranslationOutcome:
-  case Success(response: TranslationResponse)
+sealed trait TranslationOutcome
+object TranslationOutcome {
+  final case class Success(response: TranslationResponse) extends TranslationOutcome
+
   /** `fatal` marks a failure that will fail identically on every retry (eg.
     * a rejected API key, or a model id the provider no longer serves), as
     * opposed to one that might succeed on a smaller request or a later
@@ -46,14 +48,16 @@ enum TranslationOutcome:
     * per-key and repeated for every other missing key, see "Error handling"
     * in TRANSLATION.md.
     */
-  case Failure(reason: String, fatal: Boolean = false)
+  final case class Failure(reason: String, fatal: Boolean = false) extends TranslationOutcome
+}
 
 /** Provider-agnostic call shape. Implementations wrap a specific provider's
   * sttp-ai client; tests fake this trait directly rather than exercising a
   * live network call.
   */
-trait Translator:
+trait Translator {
   def translateBlock(request: TranslationRequest): TranslationOutcome
+}
 
 /** One trait per linked-in provider, so a fake in a test is tied to the
   * provider it stands in for, see "Test coverage" in TRANSLATION.md.
