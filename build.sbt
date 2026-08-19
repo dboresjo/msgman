@@ -70,11 +70,16 @@ lazy val root = (project in file("."))
       )
       Seq(file)
     }.taskValue,
-    libraryDependencies += "org.scalameta" %% "munit" % "1.3.5" % Test,
+    // Unlike the sbt-2.x mainline, sbt 1.x's ScalaNativePlugin does not auto-suffix
+    // a plain %% dependency to the native-cross-versioned artifact id (eg.
+    // scala-native-crypto is only ever published as .._native0.5_3, never a plain
+    // .._3), so %%% (still needed under sbt 1.x) is kept here rather than the %%
+    // used on main.
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.3.5" % Test,
     // Only pulled in when the install script's --with-ai flag requested at least
     // one provider. An empty aiProviders means msgman needs nothing beyond libc
     // to run, same as today; see TRANSLATION.md.
-    libraryDependencies ++= aiProviders.map(p => "com.softwaremill.sttp.ai" %% p % sttpAiVersion),
+    libraryDependencies ++= aiProviders.map(p => "com.softwaremill.sttp.ai" %%% p % sttpAiVersion),
     // Each provider has a real (needs that provider's sttp-ai module) and a stub
     // (no dependency, always fails) source directory defining the same factory
     // object, eg. ClaudeFactory. Only one of the two is compiled in per provider,
@@ -92,7 +97,7 @@ lazy val root = (project in file("."))
     // added conditionally rather than as a plain Test dependency: a plain `sbt test`
     // must not need libcrypto at all, only `sbt coverage test` does.
     libraryDependencies ++= {
-      if (coverageEnabled.value) Seq("com.github.lolgab" %% "scala-native-crypto" % "0.4.0" % Test)
+      if (coverageEnabled.value) Seq("com.github.lolgab" %%% "scala-native-crypto" % "0.4.0" % Test)
       else Seq.empty
     },
     testFrameworks += new TestFramework("munit.Framework"),
