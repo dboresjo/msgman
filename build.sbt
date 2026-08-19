@@ -21,6 +21,10 @@ val sttpAiVersion = "0.8.0"
 
 lazy val root = (project in file("."))
   .enablePlugins(ScalaNativePlugin)
+  // Fans out `test`/`compile` etc. to the plugin project too, so a bare `sbt
+  // test` (as run in CI, see .github/workflows/scala.yml) covers sbt-msgman's
+  // own tests as well, not just the CLI's.
+  .aggregate(plugin)
   .settings(
     name := "msgman",
     version := "0.1.0",
@@ -29,6 +33,12 @@ lazy val root = (project in file("."))
     nativeConfig ~= { c =>
       c.withMode(Mode.debug)
     },
+    // The CLI-agnostic parsing/sorting/translation logic lives under core/, shared
+    // with the sbt plugin (see plugin/), which compiles the very same source files
+    // as a JVM build rather than depending on this project's Native artifact
+    // directly (Scala Native binaries aren't consumable as a plain JVM dependency).
+    Compile / unmanagedSourceDirectories += baseDirectory.value / "core" / "src" / "main" / "scala",
+    Test / unmanagedSourceDirectories += baseDirectory.value / "core" / "src" / "test" / "scala",
     Compile / sourceGenerators += Def.task {
       def quote(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
@@ -60,11 +70,11 @@ lazy val root = (project in file("."))
       )
       Seq(file)
     }.taskValue,
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.3.5" % Test,
+    libraryDependencies += "org.scalameta" %% "munit" % "1.3.5" % Test,
     // Only pulled in when the install script's --with-ai flag requested at least
     // one provider. An empty aiProviders means msgman needs nothing beyond libc
     // to run, same as today; see TRANSLATION.md.
-    libraryDependencies ++= aiProviders.map(p => "com.softwaremill.sttp.ai" %%% p % sttpAiVersion),
+    libraryDependencies ++= aiProviders.map(p => "com.softwaremill.sttp.ai" %% p % sttpAiVersion),
     // Each provider has a real (needs that provider's sttp-ai module) and a stub
     // (no dependency, always fails) source directory defining the same factory
     // object, eg. ClaudeFactory. Only one of the two is compiled in per provider,
@@ -82,7 +92,7 @@ lazy val root = (project in file("."))
     // added conditionally rather than as a plain Test dependency: a plain `sbt test`
     // must not need libcrypto at all, only `sbt coverage test` does.
     libraryDependencies ++= {
-      if (coverageEnabled.value) Seq("com.github.lolgab" %%% "scala-native-crypto" % "0.4.0" % Test)
+      if (coverageEnabled.value) Seq("com.github.lolgab" %% "scala-native-crypto" % "0.4.0" % Test)
       else Seq.empty
     },
     testFrameworks += new TestFramework("munit.Framework"),
@@ -94,6 +104,38 @@ lazy val root = (project in file("."))
     // TRANSLATION.md; the prompt-building and response-parsing logic they call into
     // (AiProtocol) is provider-agnostic and not excluded, it is covered normally.
     coverageExcludedFiles := ".*BuildInfo.*;.*Main;.*OpenAiFactory;.*ClaudeFactory;.*GeminiFactory",
+    scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+      "-unchecked"
+    )
+  )
+
+// Distributes the same format/verify logic as an sbt plugin (sbt-msgman), for
+// projects that would rather run it as a build task than install the CLI
+// separately. sbt 2.x only: sbt 1.x plugins must be Scala 2.12 (sbt 1.x itself
+// runs on it), which would force core's Scala 3 syntax to be rewritten to a
+// dialect compatible with both; sbt 2.x plugins are Scala 3, so this project
+// compiles core's sources unchanged instead of duplicating or downgrading them.
+lazy val plugin = (project in file("plugin"))
+  .settings(
+    organization := "io.github.dboresjo",
+    name := "sbt-msgman",
+    version := "0.1.0",
+    // Must match the Scala version sbt 2.0.1 itself is built with, not core's own
+    // 3.3.7: plugin classes are loaded straight into sbt's running process/TASTy
+    // reader, the same reason an sbt 1.x plugin has to be exactly Scala 2.12.
+    scalaVersion := "3.8.4",
+    sbtPlugin := true,
+    Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "main" / "scala",
+    Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "test" / "scala",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.3.5" % Test,
+    testFrameworks += new TestFramework("munit.Framework"),
+    // MsgmanPlugin's own Def.task wiring can't be exercised without a live sbt
+    // task-graph harness, the same reasoning that excludes root's Main; the
+    // pure argument-building/exit-code logic it calls into (MsgmanTasks) is not
+    // excluded and is covered normally by MsgmanTasksSpec.
+    coverageExcludedFiles := ".*MsgmanPlugin;.*NoTranslation",
     scalacOptions ++= Seq(
       "-deprecation",
       "-feature",

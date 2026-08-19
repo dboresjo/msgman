@@ -126,6 +126,47 @@ No JDK or Scala Native toolchain is required for this route, only the
 package's own runtime dependencies (libc, and libcurl/libssl/libidn2 for
 `--translate`), which apt resolves automatically.
 
+### sbt plugin
+
+For an sbt/Play project, `msgman format`/`verify` can be run as a build task
+instead of a separately-installed binary, via the `sbt-msgman` plugin. It
+requires sbt 2.x (sbt 1.x plugins are built against Scala 2.12, which the
+plugin's shared logic, written in Scala 3, cannot target).
+
+`project/plugins.sbt`:
+
+```
+addSbtPlugin("io.github.dboresjo" % "sbt-msgman" % "<version>")
+```
+
+`build.sbt`, enabling the plugin on a project and wiring `verify` into
+`compile`:
+
+```scala
+lazy val myProject = (project in file("."))
+  .enablePlugins(MsgmanPlugin)
+  .settings(
+    Compile / compile := (Compile / compile).dependsOn(msgmanVerify).value
+  )
+```
+
+Settings mirror the equivalent CLI flags, and are unset by default so
+`.msgman` and msgman's own built-in defaults still apply exactly as they do
+for the CLI, rather than the plugin silently overriding them:
+
+| Setting               | Equivalent CLI flag |
+|------------------------|---------------------|
+| `msgmanMaster`         | `--master`          |
+| `msgmanPath`           | `--path`            |
+| `msgmanFilePattern`    | `--file-pattern`    |
+| `msgmanPriorityKeys`   | `--priority-keys`   |
+| `msgmanRequire`        | `--require`         |
+
+`msgmanFormat` and `msgmanVerify` are the tasks, equivalent to the CLI's
+`format` and `verify` commands; a failed run fails the sbt task rather than
+setting an exit code. `--translate` is not supported by the plugin: it always
+runs as if built without `--with-ai`.
+
 ## Usage
 
 ```
@@ -275,6 +316,15 @@ sbt clean coverage test coverageReport
 Coverage instrumentation needs OpenSSL's `libcrypto` available at build and
 link time (development headers/libs, e.g. the `libssl-dev` package on
 Debian/Ubuntu), to satisfy `java.security.SecureRandom` on Scala Native.
+
+The parsing/sorting/translation logic shared with the sbt plugin lives under
+`core/`, compiled as a source directory by both the `msgman` (Native) and
+`plugin` (JVM) sbt projects rather than as a project of its own. The plugin's
+own code lives under `plugin/`, with its own test/coverage run:
+
+```
+sbt plugin/coverage plugin/test plugin/coverageReport
+```
 
 The HTML coverage report is written to
 `target/scala-3.3.7/scoverage-report/index.html`.
