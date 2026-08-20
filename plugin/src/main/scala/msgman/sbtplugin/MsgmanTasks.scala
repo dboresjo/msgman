@@ -2,6 +2,7 @@ package msgman.sbtplugin
 
 import java.io.File
 import msgman.{ExitCode, Runner, Translator}
+import sbt.internal.util.MessageOnlyException
 
 /** The argument-building and exit-code handling behind [[MsgmanPlugin]]'s tasks,
   * kept free of sbt's `Def`/`SettingKey` machinery so it can be unit-tested
@@ -10,11 +11,6 @@ import msgman.{ExitCode, Runner, Translator}
   */
 object MsgmanTasks:
 
-  /** Thrown by `runOrThrow` when the underlying `msgman` run fails, so the
-    * owning sbt task fails with a clear, single-line message rather than a
-    * raw exit code.
-    */
-  final case class MsgmanTaskFailed(message: String) extends RuntimeException(message)
 
   /** Builds the same style of argument vector `Cli.parse` expects, from an sbt
     * project's settings. Only settings the project actually set are included;
@@ -60,11 +56,13 @@ object MsgmanTasks:
     if strict then args += "--strict"
     args.result().toArray
 
-  /** Runs `msgman` in-process against `cwd` and throws `MsgmanTaskFailed` if it
-    * doesn't exit successfully. `providers` is only meaningful for `format
-    * --translate`; `verify` never uses it.
+  /** Runs `msgman` in-process against `cwd` and throws `MessageOnlyException`
+    * if it doesn't exit successfully, so sbt prints just the message, not a
+    * stack trace through its own task-execution machinery, which would tell
+    * a caller nothing about the actual `msgman` failure. `providers` is only
+    * meaningful for `format --translate`; `verify` never uses it.
     */
   def runOrThrow(args: Array[String], cwd: File, revision: String, providers: Map[String, Translator] = Map.empty): Unit =
     val exitCode = Runner.run(args, cwd, System.out, System.err, revision, providers = providers, env = sys.env.get)
     if exitCode != ExitCode.Success then
-      throw MsgmanTaskFailed(s"msgman ${args.headOption.getOrElse("")} failed (exit code $exitCode)")
+      throw new MessageOnlyException(s"msgman ${args.headOption.getOrElse("")} failed (exit code $exitCode)")
