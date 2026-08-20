@@ -2,6 +2,7 @@ package msgman.sbtplugin
 
 import java.io.File
 import java.nio.file.Files
+import sbt.internal.util.MessageOnlyException
 
 class MsgmanTasksSpec extends munit.FunSuite {
 
@@ -91,9 +92,9 @@ class MsgmanTasksSpec extends munit.FunSuite {
     MsgmanTasks.runOrThrow(Array("verify"), cwd, "sbt-msgman")
 
   }
-  test("runOrThrow throws MsgmanTaskFailed with the exit code on a failed run") {
+  test("runOrThrow throws MessageOnlyException with the exit code on a failed run") {
     val cwd = tempCwd()
-    val ex = intercept[MsgmanTasks.MsgmanTaskFailed] {
+    val ex = intercept[MessageOnlyException] {
       MsgmanTasks.runOrThrow(Array("verify"), cwd, "sbt-msgman")
     }
     assert(ex.getMessage.contains("verify"))
@@ -110,7 +111,7 @@ class MsgmanTasksSpec extends munit.FunSuite {
     // No AI provider dependency is linked into this branch's plugin at all (see
     // build.sbt), so this exercises the real default `providers = Map.empty`
     // path, not an explicitly-passed fake provider.
-    val ex = intercept[MsgmanTasks.MsgmanTaskFailed] {
+    val ex = intercept[MessageOnlyException] {
       MsgmanTasks.runOrThrow(args, cwd, "sbt-msgman")
     }
     assert(ex.getMessage.contains("format"))
@@ -135,7 +136,7 @@ class MsgmanTasksSpec extends munit.FunSuite {
     val args = MsgmanTasks.buildArgs("format", None, None, None, Nil, Nil, translate = true, model = Some("test-model"))
     // No provider API key is configured in this environment, so this fails before any
     // network call is attempted, exercising the real env lookup (sys.env.get) along the way.
-    val ex = intercept[MsgmanTasks.MsgmanTaskFailed] {
+    val ex = intercept[MessageOnlyException] {
       MsgmanTasks.runOrThrow(args, cwd, "sbt-msgman", providers = Map("openai" -> fake))
     }
     assert(ex.getMessage.contains("format"))
