@@ -1,7 +1,7 @@
 package msgman.sbtplugin
 
 import java.io.File
-import msgman.{ExitCode, Runner}
+import msgman.{ExitCode, Runner, Translator}
 
 /** The argument-building and exit-code handling behind [[MsgmanPlugin]]'s tasks,
   * kept free of sbt's `Def`/`SettingKey` machinery so it can be unit-tested
@@ -29,7 +29,12 @@ object MsgmanTasks {
       path: Option[String],
       filePattern: Option[String],
       priorityKeys: List[String],
-      require: List[String]
+      require: List[String],
+      fix: Boolean = false,
+      translate: Boolean = false,
+      model: Option[String] = None,
+      verbose: Boolean = false,
+      strict: Boolean = false
   ): Array[String] = {
     val args = List.newBuilder[String]
     args += command
@@ -48,16 +53,22 @@ object MsgmanTasks {
     if (require.nonEmpty) {
       args += "--require"; args += require.mkString(",")
     }
+    if (fix) args += "--fix"
+    if (translate) args += "--translate"
+    model.foreach { m =>
+      args += "--model"; args += m
+    }
+    if (verbose) args += "--verbose"
+    if (strict) args += "--strict"
     args.result().toArray
   }
 
   /** Runs `msgman` in-process against `cwd` and throws `MsgmanTaskFailed` if it
-    * doesn't exit successfully. `--translate` is not supported: the plugin
-    * always runs with no AI providers linked in, the same as a CLI binary
-    * built without `--with-ai`.
+    * doesn't exit successfully. `providers` is only meaningful for `format
+    * --translate`; `verify` never uses it.
     */
-  def runOrThrow(args: Array[String], cwd: File, revision: String): Unit = {
-    val exitCode = Runner.run(args, cwd, System.out, System.err, revision, env = NoTranslation.env)
+  def runOrThrow(args: Array[String], cwd: File, revision: String, providers: Map[String, Translator] = Map.empty): Unit = {
+    val exitCode = Runner.run(args, cwd, System.out, System.err, revision, providers = providers, env = sys.env.get)
     if (exitCode != ExitCode.Success)
       throw MsgmanTaskFailed(s"msgman ${args.headOption.getOrElse("")} failed (exit code $exitCode)")
   }

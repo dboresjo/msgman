@@ -129,9 +129,15 @@ package's own runtime dependencies (libc, and libcurl/libssl/libidn2 for
 ### sbt plugin
 
 For an sbt/Play project, `msgman format`/`verify` can be run as a build task
-instead of a separately-installed binary, via the `sbt-msgman` plugin. It
-requires sbt 2.x (sbt 1.x plugins are built against Scala 2.12, which the
-plugin's shared logic, written in Scala 3, cannot target).
+instead of a separately-installed binary, via the `sbt-msgman` plugin. It is
+published for both sbt 2.x and sbt 1.x; sbt resolves the right cross-built
+artifact automatically from the same coordinate below. The sbt 1.x line is a
+frozen, one-time snapshot rather than an actively-maintained twin of the sbt
+2.x line, and cannot support `msgmanTranslate`: `--translate` needs an AI
+provider client library that is only published for Scala 2.13/3, never the
+Scala 2.12 an sbt 1.x plugin must target, so `msgmanTranslate := true` always
+fails with a clean "no provider linked in" error on sbt 1.x, the same as a
+CLI binary built without `--with-ai`.
 
 `project/plugins.sbt`:
 
@@ -161,6 +167,11 @@ for the CLI, rather than the plugin silently overriding them:
 | `msgmanFilePattern`    | `--file-pattern`    |
 | `msgmanPriorityKeys`   | `--priority-keys`   |
 | `msgmanRequire`        | `--require`         |
+| `msgmanFix`            | `--fix` (format only, cannot combine with `msgmanTranslate`) |
+| `msgmanTranslate`      | `--translate` (format only; sbt 1.x always fails cleanly, see above) |
+| `msgmanModel`          | `--model` (only with `msgmanTranslate`) |
+| `msgmanVerbose`        | `--verbose` (only with `msgmanTranslate`) |
+| `msgmanStrict`         | `--strict` (verify only)  |
 
 `msgmanFormat` and `msgmanVerify` are the tasks, equivalent to the CLI's
 `format` and `verify` commands; a failed run fails the sbt task rather than

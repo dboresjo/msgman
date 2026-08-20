@@ -142,6 +142,15 @@ lazy val plugin = (project in file("plugin"))
     sbtPlugin := true,
     Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "main" / "scala",
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "test" / "scala",
+    // Unlike the mainline's sbt-2.x plugin, the real AI provider *Factory
+    // objects are not pulled in here: com.softwaremill.sttp.ai (the client
+    // library they need) is only published for Scala 2.13 and 3, never 2.12,
+    // so there is no working artifact to link against on this branch. The
+    // msgmanTranslate/msgmanModel/msgmanVerbose settings still exist (see
+    // MsgmanPlugin) for API parity, but msgmanFormat always runs with no
+    // provider linked in, so msgmanTranslate := true fails with the CLI's own
+    // standard "no provider linked in" setup error, same as a CLI binary
+    // built without --with-ai.
     libraryDependencies += "org.scalameta" %% "munit" % "1.3.5" % Test,
     testFrameworks += new TestFramework("munit.Framework"),
     // Central Portal publish metadata (io.github.dboresjo namespace, verified via
@@ -175,7 +184,7 @@ lazy val plugin = (project in file("plugin"))
     // task-graph harness, the same reasoning that excludes root's Main; the
     // pure argument-building/exit-code logic it calls into (MsgmanTasks) is not
     // excluded and is covered normally by MsgmanTasksSpec.
-    coverageExcludedFiles := ".*MsgmanPlugin;.*NoTranslation",
+    coverageExcludedFiles := ".*MsgmanPlugin",
     scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
