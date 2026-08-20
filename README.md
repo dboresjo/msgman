@@ -161,11 +161,19 @@ for the CLI, rather than the plugin silently overriding them:
 | `msgmanFilePattern`    | `--file-pattern`    |
 | `msgmanPriorityKeys`   | `--priority-keys`   |
 | `msgmanRequire`        | `--require`         |
+| `msgmanFix`            | `--fix`             |
+| `msgmanTranslate`      | `--translate`       |
+| `msgmanModel`          | `--model`           |
+| `msgmanVerbose`        | `--verbose`         |
+| `msgmanStrict`         | `--strict`          |
 
 `msgmanFormat` and `msgmanVerify` are the tasks, equivalent to the CLI's
 `format` and `verify` commands; a failed run fails the sbt task rather than
-setting an exit code. `--translate` is not supported by the plugin: it always
-runs as if built without `--with-ai`.
+setting an exit code. `msgmanFormat` supports `--translate` (see
+[TRANSLATION.md](TRANSLATION.md)): unlike the CLI, which links AI providers in
+one at a time at build time to keep the native binary small, the plugin
+always has every provider available, so `.msgman`'s `provider` setting (or
+the "exactly one available" default) picks which one is actually used.
 
 ## Usage
 

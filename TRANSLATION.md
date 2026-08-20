@@ -215,6 +215,14 @@ unconditionally regardless of which providers were actually linked in, while
 a build with none linked pulls in no sttp-ai code at all. The linked-in list
 is embedded in the generated `BuildInfo.aiProviders: List[String]`.
 
+The `sbt-msgman` plugin (see "sbt plugin" in README.md) uses the same real
+`*Factory` objects, but always links all three providers in: a JVM plugin's
+classpath has no equivalent size cost to a native binary's, so there is no
+`--with-ai`-style opt-in there. `msgmanTranslate`, `msgmanModel` and
+`msgmanVerbose` are the plugin's equivalents of `--translate`, `--model` and
+`--verbose`; provider selection and API key resolution still go through
+`.msgman` exactly as they do for the CLI.
+
 ## Test coverage
 
 One trait per linked-in provider (`OpenAiTranslator`, `ClaudeTranslator`,

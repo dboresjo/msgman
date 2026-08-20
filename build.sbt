@@ -144,7 +144,15 @@ lazy val plugin = (project in file("plugin"))
     sbtPlugin := true,
     Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "main" / "scala",
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "core" / "src" / "test" / "scala",
+    // Unlike the CLI, which links providers in one at a time at Scala Native
+    // link time to keep the binary small (see -Dmsgman.aiProviders in root's
+    // settings above), a JVM plugin classpath has no equivalent size cost, so
+    // every provider is always linked in here.
+    Compile / unmanagedSourceDirectories ++= validAiProviders.toList.sorted.map { p =>
+      (ThisBuild / baseDirectory).value / "src" / "main" / s"scala-ai-$p"
+    },
     libraryDependencies += "org.scalameta" %% "munit" % "1.3.5" % Test,
+    libraryDependencies ++= validAiProviders.toList.map(p => "com.softwaremill.sttp.ai" %% p % sttpAiVersion),
     testFrameworks += new TestFramework("munit.Framework"),
     // Central Portal publish metadata (io.github.dboresjo namespace, verified via
     // GitHub OAuth). See https://www.scala-sbt.org/2.x/docs/en/recipes/central.html.
@@ -176,8 +184,10 @@ lazy val plugin = (project in file("plugin"))
     // MsgmanPlugin's own Def.task wiring can't be exercised without a live sbt
     // task-graph harness, the same reasoning that excludes root's Main; the
     // pure argument-building/exit-code logic it calls into (MsgmanTasks) is not
-    // excluded and is covered normally by MsgmanTasksSpec.
-    coverageExcludedFiles := ".*MsgmanPlugin;.*NoTranslation",
+    // excluded and is covered normally by MsgmanTasksSpec. The three *Factory
+    // objects wrap a live AI provider client and cannot be exercised without a
+    // live network call either, same as root's own exclusion of them.
+    coverageExcludedFiles := ".*MsgmanPlugin;.*OpenAiFactory;.*ClaudeFactory;.*GeminiFactory",
     scalacOptions ++= Seq(
       "-deprecation",
       "-feature",

@@ -35,6 +35,36 @@ class MsgmanTasksSpec extends munit.FunSuite:
       List("format", "--master", "en", "--path", "conf", "--file-pattern", "messages.$1", "--priority-keys", "phase", "--require", "cy")
     )
 
+  test("buildArgs includes --fix when set"):
+    assertEquals(
+      MsgmanTasks.buildArgs("format", None, None, None, Nil, Nil, fix = true).toList,
+      List("format", "--fix")
+    )
+
+  test("buildArgs includes --translate when set"):
+    assertEquals(
+      MsgmanTasks.buildArgs("format", None, None, None, Nil, Nil, translate = true).toList,
+      List("format", "--translate")
+    )
+
+  test("buildArgs includes --model when set"):
+    assertEquals(
+      MsgmanTasks.buildArgs("format", None, None, None, Nil, Nil, translate = true, model = Some("gpt-5")).toList,
+      List("format", "--translate", "--model", "gpt-5")
+    )
+
+  test("buildArgs includes --verbose when set"):
+    assertEquals(
+      MsgmanTasks.buildArgs("format", None, None, None, Nil, Nil, translate = true, verbose = true).toList,
+      List("format", "--translate", "--verbose")
+    )
+
+  test("buildArgs includes --strict when set"):
+    assertEquals(
+      MsgmanTasks.buildArgs("verify", None, None, None, Nil, Nil, strict = true).toList,
+      List("verify", "--strict")
+    )
+
   private def tempCwd(): File = Files.createTempDirectory("msgman-plugin").toFile
 
   private def write(dir: File, name: String, content: String): File =
@@ -57,3 +87,25 @@ class MsgmanTasksSpec extends munit.FunSuite:
       MsgmanTasks.runOrThrow(Array("verify"), cwd, "sbt-msgman")
     assert(ex.getMessage.contains("verify"))
     assert(ex.getMessage.contains("exit code"))
+
+  test("runOrThrow accepts an explicit providers map"):
+    val cwd = tempCwd()
+    val conf = new File(cwd, "conf")
+    conf.mkdirs()
+    write(conf, "messages.en", "site.back = Back\n")
+    val fake: msgman.Translator = (_: msgman.TranslationRequest) => msgman.TranslationOutcome.Failure("unused")
+    MsgmanTasks.runOrThrow(Array("verify"), cwd, "sbt-msgman", providers = Map("openai" -> fake))
+
+  test("runOrThrow's env lookup is reached when --translate resolves a provider's API key"):
+    val cwd = tempCwd()
+    val conf = new File(cwd, "conf")
+    conf.mkdirs()
+    write(conf, "messages.en", "site.back = Back\n")
+    write(conf, "messages.cy", "")
+    val fake: msgman.Translator = (_: msgman.TranslationRequest) => msgman.TranslationOutcome.Failure("unused")
+    val args = MsgmanTasks.buildArgs("format", None, None, None, Nil, Nil, translate = true, model = Some("test-model"))
+    // No provider API key is configured in this environment, so this fails before any
+    // network call is attempted, exercising the real env lookup (sys.env.get) along the way.
+    val ex = intercept[MsgmanTasks.MsgmanTaskFailed]:
+      MsgmanTasks.runOrThrow(args, cwd, "sbt-msgman", providers = Map("openai" -> fake))
+    assert(ex.getMessage.contains("format"))
