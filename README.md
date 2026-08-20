@@ -1,6 +1,10 @@
 # msgman
 
-A command line tool for managing Scala Play Framework messages files for multiple languages.
+A simple tool for managing key-value i18n messages files as used by frameworks such as Scala Play or Spring Boot. 
+Available both as a standalone command line tool and, for sbt/Play projects, as the `sbt-msgman` 
+build plugin (see [sbt plugin](#sbt-plugin) below).
+
+Separate auto-format and format-verification steps are provided to support an effective development flow whilst also ensuring rock-solid CI pipeline verification.
 
 `msgman` sorts every messages file entry into a canonical order:
 
